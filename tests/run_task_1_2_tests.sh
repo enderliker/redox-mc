@@ -27,10 +27,19 @@ java -agentpath:"${AGENT_SO}" \
 
 echo ""
 echo "=== Running Test 3: Real Server Bundler & Minecraft Subclass Verification ==="
-BUNDLER_JAR="${MINECRAFT_BUNDLER_JAR:-/home/ender/server.jar}"
-if [ ! -f "${BUNDLER_JAR}" ]; then
-    BUNDLER_JAR="${ROOT_DIR}/versions/26.3/server-26.3.jar"
+BUNDLER_JAR="${MINECRAFT_BUNDLER_JAR:-}"
+if [ -z "${BUNDLER_JAR}" ] || [ ! -f "${BUNDLER_JAR}" ]; then
+    if [ -f "${ROOT_DIR}/versions/26.3/server.jar" ]; then
+        BUNDLER_JAR="${ROOT_DIR}/versions/26.3/server.jar"
+    elif [ -f "/home/ender/server.jar" ]; then
+        BUNDLER_JAR="/home/ender/server.jar"
+    else
+        echo "[test] server.jar not found, running setup_mc_env.sh..."
+        "${ROOT_DIR}/scripts/setup_mc_env.sh"
+        BUNDLER_JAR="${ROOT_DIR}/versions/26.3/server.jar"
+    fi
 fi
+echo "[test] Using bundler jar: ${BUNDLER_JAR}"
 SERVER_OUTPUT=$(java -agentpath:"${AGENT_SO}" -jar "${BUNDLER_JAR}" --help 2>&1)
 echo "${SERVER_OUTPUT}" | grep "Successfully bound native methods to net.redoxmc.bridge.RedoxBridge via RegisterNatives."
 echo "${SERVER_OUTPUT}" | grep "Captured game classloader from first 'net/minecraft/' class: 'net/minecraft/server/Main'"

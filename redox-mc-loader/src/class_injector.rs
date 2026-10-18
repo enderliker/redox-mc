@@ -119,8 +119,7 @@ pub unsafe fn define_class(
             name
         );
         unsafe {
-            // Print stacktrace for diagnostics and CLEAR the exception so JVM does not crash
-            ((**env).ExceptionDescribe)(env);
+            // Clear the pending exception so JVM does not crash
             ((**env).ExceptionClear)(env);
         }
         return Err(format!(

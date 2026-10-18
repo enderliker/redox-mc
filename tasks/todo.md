@@ -103,12 +103,12 @@
 **Description:** Definir el formato del manifiesto de mods (`mod.toml`: id, version, side, dependencies, min_loader_version). Implementar en `redox-mc-loader` el parser y el algoritmo de ordenación determinista: validación de compatibilidad con el entorno (ignorar mods cliente en servidor dedicado), resolución topológica de dependencias y ordenación lexicográfica por mod ID en caso de nodos independientes.
 
 **Acceptance criteria:**
-- [ ] Parser de `mod.toml` robusto ante campos desconocidos y con validación de tipos semver.
-- [ ] La resolución de dependencias detecta ciclos y dependencias faltantes abortando con un error legible.
-- [ ] El orden de los mods resultantes es estrictamente determinista entre diferentes ejecuciones y plataformas.
+- [x] Parser de `mod.toml` robusto ante campos desconocidos y con validación de tipos semver.
+- [x] La resolución de dependencias detecta ciclos y dependencias faltantes abortando con un error legible.
+- [x] El orden de los mods resultantes es estrictamente determinista entre diferentes ejecuciones y plataformas.
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p redox-mc-loader --test manifest_resolution` con diversos grafos de dependencias.
+- [x] Tests pass: `cargo test -p redox-mc-loader --test manifest_resolution` con 10 pruebas cubriendo grafos topológicos, detección de ciclos, filtrado por entorno (cliente/servidor) y desempate lexicográfico.
 
 **Dependencies:** Task 1.2, Task 1.4
 

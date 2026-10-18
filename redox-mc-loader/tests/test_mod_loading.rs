@@ -52,7 +52,10 @@ fn test_dynamic_mod_discovery_and_loading() {
     let loaded = &manager.loaded_mods()[0];
     assert_eq!(loaded.manifest.id, "test_mod");
     assert_eq!(loaded.manifest.version, Version::parse("0.1.0").unwrap());
-    assert!(loaded.on_bootstrap_fn.is_some(), "redox_mod_on_bootstrap symbol must be resolved");
+    assert!(
+        loaded.on_bootstrap_fn.is_some(),
+        "redox_mod_on_bootstrap symbol must be resolved"
+    );
 
     // 4. Test dispatch_bootstrap
     manager.dispatch_bootstrap();

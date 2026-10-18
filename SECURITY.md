@@ -42,7 +42,7 @@ We take the security of Redox-MC and its users seriously. If you discover a secu
 
 Please report security issues via one of the following methods:
 1. **GitHub Security Advisories:** Navigate to the repository's **Security** tab and click **"Report a vulnerability"** (preferred).
-2. **Security Contact:** Email the maintainers directly at `security@redoxmc.org` (or maintainer contact listed in repository settings) with:
+2. **Security Contact:** Email the maintainers directly at `enderliker01@gmail.com` (or maintainer contact listed in repository settings) with:
    - A detailed description of the vulnerability.
    - Steps to reproduce or a minimal proof-of-concept (PoC).
    - The affected operating system, architecture, and JVM version.

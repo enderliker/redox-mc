@@ -26,7 +26,14 @@ fi
 # 2. Ensure inner server-26.3.jar is extracted
 if [ ! -f "${SERVER_INNER}" ]; then
     echo "[setup] Extracting server-26.3.jar from ${BUNDLER_TARGET}..."
-    unzip -p "${BUNDLER_TARGET}" "META-INF/versions/26.3/server-26.3.jar" > "${SERVER_INNER}"
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -p "${BUNDLER_TARGET}" "META-INF/versions/26.3/server-26.3.jar" > "${SERVER_INNER}"
+    else
+        EXTRACT_TMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_extract')
+        (cd "${EXTRACT_TMP}" && jar xf "${BUNDLER_TARGET}" "META-INF/versions/26.3/server-26.3.jar")
+        cp "${EXTRACT_TMP}/META-INF/versions/26.3/server-26.3.jar" "${SERVER_INNER}"
+        rm -rf "${EXTRACT_TMP}"
+    fi
 fi
 
 echo "[setup] Minecraft 26.3 environment ready:"

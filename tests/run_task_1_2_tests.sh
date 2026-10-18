@@ -2,28 +2,45 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AGENT_SO="${ROOT_DIR}/target/debug/libredox_mc_loader.so"
+
+case "$(uname -s)" in
+    CYGWIN*|MINGW*|MSYS*)
+        AGENT_LIB="${ROOT_DIR}/target/debug/redox_mc_loader.dll"
+        MOD_LIB="${ROOT_DIR}/target/debug/test_mod.dll"
+        CP_SEP=";"
+        ;;
+    Darwin*)
+        AGENT_LIB="${ROOT_DIR}/target/debug/libredox_mc_loader.dylib"
+        MOD_LIB="${ROOT_DIR}/target/debug/libtest_mod.dylib"
+        CP_SEP=":"
+        ;;
+    *)
+        AGENT_LIB="${ROOT_DIR}/target/debug/libredox_mc_loader.so"
+        MOD_LIB="${ROOT_DIR}/target/debug/libtest_mod.so"
+        CP_SEP=":"
+        ;;
+esac
 
 echo "=== Building redox-mc-bridge and compiling agent ==="
 "${ROOT_DIR}/redox-mc-bridge/build.sh"
 cargo build -p redox-mc-loader
 cargo build -p test-mod
 
-if [ ! -f "${AGENT_SO}" ]; then
-    echo "ERROR: Agent shared library not found at ${AGENT_SO}"
+if [ ! -f "${AGENT_LIB}" ]; then
+    echo "ERROR: Agent shared library not found at ${AGENT_LIB}"
     exit 1
 fi
 
 echo ""
 echo "=== Running Test 1: Client/Integrated Server ClassLoader Test ==="
-java -agentpath:"${AGENT_SO}" \
-    -cp "${ROOT_DIR}/redox-mc-bridge/build/test-classes:${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar:${ROOT_DIR}/versions/26.3/server-26.3.jar" \
+java -agentpath:"${AGENT_LIB}" \
+    -cp "${ROOT_DIR}/redox-mc-bridge/build/test-classes${CP_SEP}${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar${CP_SEP}${ROOT_DIR}/versions/26.3/server-26.3.jar" \
     net.redoxmc.test.BridgeClassLoaderTest
 
 echo ""
 echo "=== Running Test 2: Bundler URLClassLoader Simulation Test ==="
-java -agentpath:"${AGENT_SO}" \
-    -cp "${ROOT_DIR}/redox-mc-bridge/build/test-classes:${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar" \
+java -agentpath:"${AGENT_LIB}" \
+    -cp "${ROOT_DIR}/redox-mc-bridge/build/test-classes${CP_SEP}${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar" \
     net.redoxmc.test.BundlerSimulationTest
 
 echo ""
@@ -41,7 +58,7 @@ if [ -z "${BUNDLER_JAR}" ] || [ ! -f "${BUNDLER_JAR}" ]; then
     fi
 fi
 echo "[test] Using bundler jar: ${BUNDLER_JAR}"
-SERVER_OUTPUT=$(java -agentpath:"${AGENT_SO}" -jar "${BUNDLER_JAR}" --help 2>&1)
+SERVER_OUTPUT=$(java -agentpath:"${AGENT_LIB}" -jar "${BUNDLER_JAR}" --help 2>&1)
 echo "${SERVER_OUTPUT}" | grep "Successfully bound native methods to net.redoxmc.bridge.RedoxBridge via RegisterNatives."
 echo "${SERVER_OUTPUT}" | grep "Captured game classloader from first 'net/minecraft/' class: 'net/minecraft/server/Main'"
 echo "${SERVER_OUTPUT}" | grep "SUCCESS: TestMinecraftSavedData instantiated: net.redoxmc.bridge.game.TestMinecraftSavedData"
@@ -49,9 +66,9 @@ echo "${SERVER_OUTPUT}" | grep "Option"
 
 echo ""
 echo "=== Running Test 4: Task 1.4 Bytecode Wrapper Hook Execution (--initSettings) ==="
-INIT_TEST_DIR=$(mktemp -d /tmp/redox_init_test_XXXXXX)
+INIT_TEST_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_init')
 cd "${INIT_TEST_DIR}"
-INIT_OUTPUT=$(java -agentpath:"${AGENT_SO}" -jar "${BUNDLER_JAR}" --initSettings 2>&1)
+INIT_OUTPUT=$(java -agentpath:"${AGENT_LIB}" -jar "${BUNDLER_JAR}" --initSettings 2>&1)
 cd "${ROOT_DIR}"
 rm -rf "${INIT_TEST_DIR}"
 
@@ -63,13 +80,13 @@ echo "[TEST] PASS: Bytecode wrapper method successfully intercepted and executed
 
 echo ""
 echo "=== Running Test 5: Task 1.6 Vertical Slice (Dynamic Mod Loading & Execution) ==="
-SLICE_TEST_DIR=$(mktemp -d /tmp/redox_slice_test_XXXXXX)
+SLICE_TEST_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_slice')
 mkdir -p "${SLICE_TEST_DIR}/mods/test_mod"
 cp "${ROOT_DIR}/examples/test-mod/mod.toml" "${SLICE_TEST_DIR}/mods/test_mod/"
-cp "${ROOT_DIR}/target/debug/libtest_mod.so" "${SLICE_TEST_DIR}/mods/test_mod/"
+cp "${MOD_LIB}" "${SLICE_TEST_DIR}/mods/test_mod/"
 
 cd "${SLICE_TEST_DIR}"
-MOD_SERVER_OUTPUT=$(java -agentpath:"${AGENT_SO}" -jar "${BUNDLER_JAR}" --initSettings 2>&1)
+MOD_SERVER_OUTPUT=$(java -agentpath:"${AGENT_LIB}" -jar "${BUNDLER_JAR}" --initSettings 2>&1)
 cd "${ROOT_DIR}"
 rm -rf "${SLICE_TEST_DIR}"
 

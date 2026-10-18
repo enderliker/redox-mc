@@ -13,14 +13,19 @@ fn test_dynamic_mod_discovery_and_loading() {
         .expect("cargo build -p test-mod failed");
     assert!(build_status.success());
 
-    let target_so = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../target/debug/libtest_mod.so"
+    let binary_name = format!(
+        "{}test_mod{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
     );
+    let target_binary = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../target/debug")
+        .join(&binary_name);
     assert!(
-        fs::metadata(target_so).is_ok(),
-        "libtest_mod.so must exist at {}",
-        target_so
+        target_binary.exists(),
+        "{} must exist at {:?}",
+        binary_name,
+        target_binary
     );
 
     let test_mod_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/test-mod");
@@ -34,9 +39,9 @@ fn test_dynamic_mod_discovery_and_loading() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&mod_subdir).unwrap();
 
-    // Copy mod.toml and libtest_mod.so into mods/test_mod/
+    // Copy mod.toml and binary into mods/test_mod/
     fs::copy(&mod_toml_path, mod_subdir.join("mod.toml")).unwrap();
-    fs::copy(target_so, mod_subdir.join("libtest_mod.so")).unwrap();
+    fs::copy(&target_binary, mod_subdir.join(&binary_name)).unwrap();
 
     // 3. Test ModManager discovery and loading
     let mut manager = ModManager::new();

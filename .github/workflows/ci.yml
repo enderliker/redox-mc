@@ -8,7 +8,7 @@ on:
 
 jobs:
   quality:
-    name: Code Quality & Lints
+    name: Code Quality & Lints (Linux x86_64)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -39,9 +39,110 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace -- -D warnings
 
-  test:
-    name: Build & Test Suite
-    runs-on: ubuntu-latest
+  linux-test:
+    name: Linux (${{ matrix.target.name }})
+    runs-on: ${{ matrix.target.os }}
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: "x86_64"
+            os: ubuntu-latest
+            rust_target: "x86_64-unknown-linux-gnu"
+            run_integration: true
+          - name: "aarch64 (ARM64)"
+            os: ubuntu-latest
+            rust_target: "aarch64-unknown-linux-gnu"
+            run_integration: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.rust_target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Minecraft 26.3 environment
+        run: ./scripts/setup_mc_env.sh
+
+      - name: Build Java bridge
+        run: ./redox-mc-bridge/build.sh
+
+      - name: Build Rust Workspace (${{ matrix.target.rust_target }})
+        run: cargo build --workspace --target ${{ matrix.target.rust_target }} --verbose
+
+      - name: Run Cargo Tests (Native x86_64)
+        if: matrix.target.run_integration
+        run: cargo test --workspace --verbose
+
+      - name: Run Agent Integration Tests (Native x86_64)
+        if: matrix.target.run_integration
+        run: ./tests/run_task_1_2_tests.sh
+
+  windows-test:
+    name: Windows (${{ matrix.target.name }})
+    runs-on: windows-latest
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: "x86_64"
+            rust_target: "x86_64-pc-windows-msvc"
+            run_tests: true
+          - name: "aarch64 (ARM64)"
+            rust_target: "aarch64-pc-windows-msvc"
+            run_tests: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.rust_target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Minecraft 26.3 environment
+        shell: bash
+        run: ./scripts/setup_mc_env.sh
+
+      - name: Build Java bridge
+        shell: bash
+        run: ./redox-mc-bridge/build.sh
+
+      - name: Build Rust Workspace (${{ matrix.target.rust_target }})
+        run: cargo build --workspace --target ${{ matrix.target.rust_target }} --verbose
+
+      - name: Run Cargo Tests (Native x86_64)
+        if: matrix.target.run_tests
+        run: cargo test --workspace --verbose
+
+      - name: Run Agent Integration Tests (Native x86_64)
+        if: matrix.target.run_tests
+        shell: bash
+        run: ./tests/run_task_1_2_tests.sh
+
+  macos-arm64-test:
+    name: macOS (ARM64 Apple Silicon)
+    runs-on: macos-latest
     needs: quality
     steps:
       - uses: actions/checkout@v7

@@ -176,17 +176,25 @@ impl Agent for RedoxMCAgent {
         context: CallbackContext<'callback>,
         mut event: ClassFileLoadHookEvent<'callback>,
     ) {
+        let name_opt = event.name_str().ok().flatten();
+
         // 1. Capture global reference to the game classloader on the FIRST net/minecraft/* class
         if let Some(jni) = context.jni() {
-            if let Some(name_cow) = event.name_str().ok().flatten() {
+            if let Some(ref name) = name_opt {
                 unsafe {
-                    class_injector::on_class_file_load(jni.raw(), event.loader(), &name_cow);
+                    class_injector::on_class_file_load(jni.raw(), event.loader(), name);
                 }
             }
         }
 
-        // 2. Check if this class matches any hook in the active version adapter
+        // 2. Fast-path: check if this class matches any hook in the active version adapter
         let hooks = adapter::active_adapter().hook_targets();
+        if let Some(ref name) = name_opt {
+            if !hooks.iter().any(|h| h.class_name == name.as_ref()) {
+                return;
+            }
+        }
+
         let class_bytes = event.class_data();
         if class_bytes.is_empty() {
             return;
@@ -194,7 +202,7 @@ impl Agent for RedoxMCAgent {
 
         match transformer::transform_class(class_bytes, hooks) {
             Ok(Some(transformed_bytes)) => {
-                if let Some(name) = event.name_str().ok().flatten() {
+                if let Some(ref name) = name_opt {
                     println!(
                         "[redox-mc-loader] Successfully transformed class '{}' ({} -> {} bytes)",
                         name,
@@ -214,7 +222,7 @@ impl Agent for RedoxMCAgent {
             }
             Err(err) => {
                 // Never crash the JVM on transformer error: fallback gracefully to original class
-                if let Some(name) = event.name_str().ok().flatten() {
+                if let Some(ref name) = name_opt {
                     eprintln!(
                         "[redox-mc-loader] Warning: Bytecode transformation failed for '{}': {}. Falling back to original bytecode.",
                         name, err

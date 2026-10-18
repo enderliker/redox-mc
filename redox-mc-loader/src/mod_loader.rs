@@ -186,7 +186,7 @@ impl ModManager {
 
             if let Ok(init_fn) = init_symbol {
                 let code = unsafe { init_fn() };
-                if code != 0 {
+                if let Err(_safety_err) = crate::safety::check_ffi_code(&manifest.id, code) {
                     return Err(ModLoaderError::InitFailed(manifest.id.clone(), code));
                 }
             } else {

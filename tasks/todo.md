@@ -210,18 +210,21 @@
 **Description:** Implementar en `redox-mc-api` la macro procedural o declarativa `#[redox_export]`. Esta macro envuelve el cuerpo de cada función de mod exportada en `std::panic::catch_unwind(AssertUnwindSafe(...))` **dentro del propio `cdylib` del mod**. Si ocurre un pánico, se registra el mensaje y el backtrace nativo en el log, y se retorna un código de error de la ABI (`FfiResult::Panic`) en lugar de abortar el proceso al cruzar la frontera FFI.
 
 **Acceptance criteria:**
-- [ ] El pánico es capturado dentro del runtime `std` del mod antes de salir por la frontera `extern "C"`.
-- [ ] Un mod de prueba con `panic!("error de prueba")` no tumba la JVM ni produce `SIGABRT`.
-- [ ] No se registran signal handlers para `SIGSEGV` ni Access Violation en el agente nativo, preservando el comportamiento de HotSpot.
+- [x] El pánico es capturado dentro del runtime `std` del mod antes de salir por la frontera `extern "C"`.
+- [x] Un mod de prueba con `panic!("error de prueba")` no tumba la JVM ni produce `SIGABRT`.
+- [x] No se registran signal handlers para `SIGSEGV` ni Access Violation en el agente nativo, preservando el comportamiento de HotSpot.
 
 **Verification:**
-- [ ] Tests pass: Test de integración con una función exportada que entra en pánico y valida el retorno de `FfiResult::Panic`.
+- [x] Tests pass: Test de integración con una función exportada que entra en pánico y valida el retorno de `FfiResult::Panic`.
 
 **Dependencies:** Task 2.1
 
 **Files likely touched:**
 - `redox-mc-api/src/macros.rs`
+- `redox-mc-api-macros/src/lib.rs`
 - `redox-mc-loader/src/safety.rs`
+- `redox-mc-api/tests/test_panic_isolation.rs`
+- `redox-mc-loader/tests/test_panic_safety.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 

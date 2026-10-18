@@ -5,6 +5,8 @@ members = [
     "redox-mc-adapter-26-3",
     "redox-mc-loader",
     "redox-mc-bindgen",
+    "redox-mc-api-macros",
+    "redox-mc-api",
     "examples/test-mod",
 ]
 resolver = "2"

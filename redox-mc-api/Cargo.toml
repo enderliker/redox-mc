@@ -1,0 +1,8 @@
+[package]
+name = "redox-mc-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+redox-mc-abi = { path = "../redox-mc-abi" }
+redox-mc-api-macros = { path = "../redox-mc-api-macros" }

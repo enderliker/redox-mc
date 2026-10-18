@@ -8,3 +8,4 @@ name = "test_mod"
 crate-type = ["cdylib"]
 
 [dependencies]
+redox-mc-api = { path = "../../redox-mc-api" }

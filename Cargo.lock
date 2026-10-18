@@ -357,6 +357,23 @@ name = "redox-mc-adapter-api"
 version = "0.1.0"
 
 [[package]]
+name = "redox-mc-api"
+version = "0.1.0"
+dependencies = [
+ "redox-mc-abi",
+ "redox-mc-api-macros",
+]
+
+[[package]]
+name = "redox-mc-api-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "redox-mc-bindgen"
 version = "0.1.0"
 dependencies = [
@@ -373,6 +390,7 @@ version = "0.1.0"
 dependencies = [
  "jvmti-bindings",
  "libloading",
+ "redox-mc-abi",
  "redox-mc-adapter-26-3",
  "redox-mc-adapter-api",
  "ristretto_classfile",
@@ -489,6 +507,9 @@ dependencies = [
 [[package]]
 name = "test-mod"
 version = "0.1.0"
+dependencies = [
+ "redox-mc-api",
+]
 
 [[package]]
 name = "thiserror"

@@ -192,6 +192,8 @@ public class CustomTarget {
         bridge_class: "net/redoxmc/bridge/RedoxBridge",
         bridge_method: "onBootstrapEntry",
         bridge_desc: "()V",
+        post_bridge_method: None,
+        post_bridge_desc: None,
     }];
 
     // 3. Transform

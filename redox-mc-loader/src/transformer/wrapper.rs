@@ -259,6 +259,21 @@ pub fn apply_wrapper_hooks(
             instructions.push(Instruction::Invokevirtual(orig_method_ref));
         }
 
+        // Invoke optional post-bridge callback
+        if let (Some(post_method), Some(post_desc)) =
+            (hook.post_bridge_method, hook.post_bridge_desc)
+        {
+            let post_method_ref = class_file.constant_pool.add_method_ref(
+                bridge_class_idx,
+                post_method,
+                post_desc,
+            )?;
+            instructions.push(Instruction::Invokestatic(post_method_ref));
+            if post_desc.ends_with(")Z") || post_desc.ends_with(")I") {
+                instructions.push(Instruction::Pop);
+            }
+        }
+
         // Return from the wrapper
         instructions.push(make_return_instruction(ret_type));
 

@@ -1,3 +1,4 @@
+pub mod registry_hook;
 pub mod wrapper;
 
 use redox_mc_adapter_api::HookTarget;

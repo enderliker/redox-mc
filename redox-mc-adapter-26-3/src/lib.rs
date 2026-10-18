@@ -21,6 +21,8 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
         bridge_class: "net/redoxmc/bridge/RedoxBridge",
         bridge_method: "onBootstrapEntry",
         bridge_desc: "()V",
+        post_bridge_method: None,
+        post_bridge_desc: None,
     },
     // 2. Registry sealing point: called right before BuiltInRegistries are frozen
     HookTarget {
@@ -31,6 +33,8 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
         bridge_class: "net/redoxmc/bridge/RedoxBridge",
         bridge_method: "onRegisterContent",
         bridge_desc: "()V",
+        post_bridge_method: Some("onRegistriesFrozen"),
+        post_bridge_desc: Some("()V"),
     },
     // 3. Server tick loop: called every tick on MinecraftServer
     HookTarget {
@@ -41,6 +45,8 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
         bridge_class: "net/redoxmc/bridge/RedoxBridge",
         bridge_method: "onServerTick",
         bridge_desc: "()V",
+        post_bridge_method: None,
+        post_bridge_desc: None,
     },
     // 4. Server chat handling: intercept incoming player chat packets
     HookTarget {
@@ -51,6 +57,8 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
         bridge_class: "net/redoxmc/bridge/RedoxBridge",
         bridge_method: "onHandleChat",
         bridge_desc: "(Ljava/lang/Object;)Z",
+        post_bridge_method: None,
+        post_bridge_desc: None,
     },
 ];
 

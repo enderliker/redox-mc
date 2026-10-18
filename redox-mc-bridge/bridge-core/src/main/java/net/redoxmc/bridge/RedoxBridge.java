@@ -29,6 +29,11 @@ public final class RedoxBridge {
     public static native void onRegisterContent();
 
     /**
+     * Hook called immediately after BuiltInRegistries.freeze$original() has sealed the registries.
+     */
+    public static native void onRegistriesFrozen();
+
+    /**
      * Returns true if the game classloader (first class in net/minecraft/*) has been captured.
      */
     public static native boolean isClassLoaderCaptured();

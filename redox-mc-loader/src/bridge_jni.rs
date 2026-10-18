@@ -20,6 +20,7 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
 
     let m_boot = CString::new("onBootstrapEntry").unwrap();
     let m_reg = CString::new("onRegisterContent").unwrap();
+    let m_frozen = CString::new("onRegistriesFrozen").unwrap();
 
     let m_captured = CString::new("isClassLoaderCaptured").unwrap();
     let sig_bool = CString::new("()Z").unwrap();
@@ -45,6 +46,11 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_reg.as_ptr() as *mut _,
             signature: sig_void.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onRegisterContent as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_frozen.as_ptr() as *mut _,
+            signature: sig_void.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onRegistriesFrozen as *mut _,
         },
         jni::JNINativeMethod {
             name: m_captured.as_ptr() as *mut _,
@@ -115,10 +121,19 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBootstrapEnt
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onRegisterContent()
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onRegisterContent(
-    _env: *mut jni::JNIEnv,
+    env: *mut jni::JNIEnv,
     _class: jni::jclass,
 ) {
-    println!("[redox-mc-loader] Native RedoxBridge.onRegisterContent() invoked before BuiltInRegistries.freeze().");
+    crate::transformer::registry_hook::handle_on_register_content(env);
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onRegistriesFrozen()
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onRegistriesFrozen(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+) {
+    crate::transformer::registry_hook::handle_on_registries_frozen(env);
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.isClassLoaderCaptured()

@@ -29,6 +29,10 @@ pub struct HookTarget {
     pub bridge_method: &'static str,
     /// Bridge method descriptor (e.g. "()V")
     pub bridge_desc: &'static str,
+    /// Optional post-invocation bridge method called immediately after the original method
+    pub post_bridge_method: Option<&'static str>,
+    /// Optional post-invocation bridge method descriptor
+    pub post_bridge_desc: Option<&'static str>,
 }
 
 /// Trait implemented by version-specific adapters (e.g. redox-mc-adapter-26-3).

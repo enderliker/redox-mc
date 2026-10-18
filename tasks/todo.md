@@ -264,13 +264,13 @@
 **Description:** En el callback `ClassFileLoadHook` de `redox-mc-loader`, transformar `net.minecraft.core.registries.BuiltInRegistries` aplicando la técnica de método envoltorio sobre `private static void freeze()`, utilizando la definición de hook de `redox-mc-adapter-26-3`. Renombrar `freeze()` a `freeze$original()` y generar un wrapper que invoque `RedoxBridge.onRegisterContent()` inmediatamente antes de `freeze$original()`.
 
 **Acceptance criteria:**
-- [ ] El hook se dispara exactamente cuando todos los registros vanilla ya contienen sus elementos iniciales creados por `createContents()`.
-- [ ] Durante la ejecución de `RedoxBridge.onRegisterContent()`, los registros tienen `isFrozen() == false`.
-- [ ] Inmediatamente después del hook, `freeze$original()` sella todos los registros (`isFrozen() == true`).
-- [ ] No se produce corrupción de stack map frames ni errores de verificación de bytecode.
+- [x] El hook se dispara exactamente cuando todos los registros vanilla ya contienen sus elementos iniciales creados por `createContents()`.
+- [x] Durante la ejecución de `RedoxBridge.onRegisterContent()`, los registros tienen `isFrozen() == false`.
+- [x] Inmediatamente después del hook, `freeze$original()` sella todos los registros (`isFrozen() == true`).
+- [x] No se produce corrupción de stack map frames ni errores de verificación de bytecode.
 
 **Verification:**
-- [ ] Manual check: Verificar en el log del servidor que el hook reporta que los registros aún están abiertos y que posteriormente se sellan.
+- [x] Manual check: Verificar en el log del servidor que el hook reporta que los registros aún están abiertos (`frozen=false`) y que posteriormente se sellan (`frozen=true`). Probado y verificado en `test_registry_hook.rs` y `./tests/run_task_1_2_tests.sh`.
 
 **Dependencies:** Task 1.3, Task 1.4, Task 2.3
 

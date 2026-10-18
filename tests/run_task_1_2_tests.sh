@@ -110,6 +110,9 @@ echo "${INIT_OUTPUT}" | grep "Successfully transformed class 'net/minecraft/serv
 echo "${INIT_OUTPUT}" | grep "Native RedoxBridge.onBootstrapEntry() invoked from Bootstrap.bootStrap()."
 echo "${INIT_OUTPUT}" | grep "Successfully transformed class 'net/minecraft/core/registries/BuiltInRegistries'"
 echo "${INIT_OUTPUT}" | grep "Native RedoxBridge.onRegisterContent() invoked before BuiltInRegistries.freeze()."
+echo "${INIT_OUTPUT}" | grep "BuiltInRegistries status: open for registration (frozen=false"
+echo "${INIT_OUTPUT}" | grep "Native RedoxBridge.onRegistriesFrozen() invoked after BuiltInRegistries.freeze()."
+echo "${INIT_OUTPUT}" | grep "BuiltInRegistries status: sealed (frozen=true"
 echo "[TEST] PASS: Bytecode wrapper method successfully intercepted and executed before vanilla logic without VerifyError."
 
 echo ""
@@ -130,6 +133,8 @@ echo "${MOD_SERVER_OUTPUT}" | grep "Loading native mod 'test_mod' from"
 echo "${MOD_SERVER_OUTPUT}" | grep "Native Rust mod initialized successfully via redox_mod_init()!"
 echo "${MOD_SERVER_OUTPUT}" | grep "Dispatching Bootstrap.bootStrap() hook to 1 loaded mod(s)..."
 echo "${MOD_SERVER_OUTPUT}" | grep "Hook received: Bootstrap.bootStrap() entered! Game is bootstrapping vanilla registries."
+echo "${MOD_SERVER_OUTPUT}" | grep "Dispatching BuiltInRegistries.freeze() hook to 1 loaded mod(s)..."
+echo "${MOD_SERVER_OUTPUT}" | grep "Hook received: BuiltInRegistries.freeze()! Registries open for custom content."
 echo "[TEST] PASS: Vertical slice fully operational! Native Rust mod discovered, loaded, and executed inside Minecraft."
 
 echo ""

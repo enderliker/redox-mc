@@ -39,6 +39,7 @@ pub struct LoadedMod {
     // Store library in memory for the life of the JVM (never dlclose)
     pub _library: Box<libloading::Library>,
     pub on_bootstrap_fn: Option<unsafe extern "C" fn()>,
+    pub on_register_content_fn: Option<unsafe extern "C" fn() -> redox_mc_abi::types::FfiStatus>,
 }
 
 pub struct ModManager {
@@ -249,11 +250,22 @@ impl ModManager {
                 bootstrap_symbol.ok().map(|s| *s)
             };
 
+            // Resolve register_content callback (from vtable or explicit symbol)
+            let on_register_content_fn = if let Some(vtable) = vtable_opt {
+                vtable.on_register_content
+            } else {
+                type RegFn = unsafe extern "C" fn() -> redox_mc_abi::types::FfiStatus;
+                let reg_symbol =
+                    unsafe { boxed_lib.get::<RegFn>(b"redox_mod_on_register_content\0") };
+                reg_symbol.ok().map(|s| *s)
+            };
+
             self.loaded_mods.push(LoadedMod {
                 manifest,
                 binary_path: candidate.binary_path.clone(),
                 _library: boxed_lib,
                 on_bootstrap_fn,
+                on_register_content_fn,
             });
         }
 
@@ -280,6 +292,32 @@ impl ModManager {
             if let Some(on_bootstrap) = loaded.on_bootstrap_fn {
                 unsafe {
                     on_bootstrap();
+                }
+            }
+        }
+    }
+
+    /// Dispatches the BuiltInRegistries.freeze() hook to all loaded mods in deterministic order.
+    pub fn dispatch_register_content(&self) {
+        if self.loaded_mods.is_empty() {
+            return;
+        }
+
+        println!(
+            "[redox-mc-loader] Dispatching BuiltInRegistries.freeze() hook to {} loaded mod(s)...",
+            self.loaded_mods.len()
+        );
+
+        for loaded in &self.loaded_mods {
+            if let Some(on_register) = loaded.on_register_content_fn {
+                let status = unsafe { on_register() };
+                if let Err(safety_err) =
+                    crate::safety::check_ffi_status(&loaded.manifest.id, status)
+                {
+                    eprintln!(
+                        "[redox-mc-loader] ERROR: Mod '{}' on_register_content failed: {}",
+                        loaded.manifest.id, safety_err
+                    );
                 }
             }
         }
@@ -368,6 +406,40 @@ pub fn on_bootstrap_entry() {
             if let Some(on_bootstrap) = cb {
                 unsafe {
                     on_bootstrap();
+                }
+            }
+        }
+    }
+}
+
+/// Called from RedoxBridge.onRegisterContent()
+pub fn on_register_content() {
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .map(|m| (m.manifest.id.clone(), m.on_register_content_fn))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    if !callbacks.is_empty() {
+        println!(
+            "[redox-mc-loader] Dispatching BuiltInRegistries.freeze() hook to {} loaded mod(s)...",
+            callbacks.len()
+        );
+        for (id, cb) in callbacks {
+            if let Some(on_register) = cb {
+                let status = unsafe { on_register() };
+                if let Err(safety_err) = crate::safety::check_ffi_status(&id, status) {
+                    eprintln!(
+                        "[redox-mc-loader] ERROR: Mod '{}' on_register_content failed: {}",
+                        id, safety_err
+                    );
                 }
             }
         }

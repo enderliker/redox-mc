@@ -1,0 +1,36 @@
+# Build artifacts
+target/
+rustmc-bridge/build/
+*.class
+*.jar
+
+# Minecraft decompiled sources & assets (PROPRIETARY - NEVER COMMIT)
+out-client/
+out-server/
+server-inner/
+server-libs/
+libraries/
+versions/
+assets/
+data/
+
+# Runtime caches and temporary directories
+.rustmc/
+mod_cache/
+logs/
+*.log
+hs_err_pid*.log
+
+# Environment & credentials
+.env
+.env.*
+*.pem
+*.key
+*.token
+
+# IDE and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

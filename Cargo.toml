@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "rustmc-loader",
+]
+resolver = "2"

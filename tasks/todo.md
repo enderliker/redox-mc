@@ -234,11 +234,11 @@
 **Description:** Implementar un harness de microbenchmark en `redox-mc-loader` para medir con precisión la sobrecarga real de llamadas nativas JNI en la máquina local (Java 25 en Linux x86_64). Medir coste de: llamadas sin argumentos, paso de primitivos, strings pequeños y objetos complejos, validando la directriz de diseño declarativo.
 
 **Acceptance criteria:**
-- [ ] Ejecuta una suite reproducible de benchmarks registrando latencia promedio y percentiles (p50, p99).
-- [ ] Genera un informe documentando la sobrecarga real (contrastando con la referencia aproximada de 10-25 ns).
+- [x] Ejecuta una suite reproducible de benchmarks registrando latencia promedio y percentiles (p50, p99).
+- [x] Genera un informe documentando la sobrecarga real (contrastando con la referencia aproximada de 10-25 ns).
 
 **Verification:**
-- [ ] Manual check: `cargo run -p redox-mc-loader --bin jni-bench` imprime los resultados estadísticos de latencia.
+- [x] Manual check: `cargo run -p redox-mc-loader --bin jni-bench` imprime los resultados estadísticos de latencia.
 
 **Dependencies:** Task 2.1
 
@@ -251,10 +251,10 @@
 ---
 
 ## Checkpoint: Frontera Binaria y Seguridad
-- [ ] Tipos `repr(C)` y reglas de deasignación simétrica verificadas.
-- [ ] Bindgen operativo extrayendo metadatos directamente de `.class` en jars.
-- [ ] Pánicos en mods capturados localmente y aislados sin abortar el proceso ni sustituir manejadores de señales de HotSpot.
-- [ ] Sobrecarga JNI caracterizada y medida.
+- [x] Tipos `repr(C)` y reglas de deasignación simétrica verificadas.
+- [x] Bindgen operativo extrayendo metadatos directamente de `.class` en jars.
+- [x] Pánicos en mods capturados localmente y aislados sin abortar el proceso ni sustituir manejadores de señales de HotSpot.
+- [x] Sobrecarga JNI caracterizada y medida.
 
 ---
 

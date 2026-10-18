@@ -7,6 +7,10 @@ edition = "2021"
 name = "redox_mc_loader"
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "jni-bench"
+path = "src/bench/main.rs"
+
 [dependencies]
 jvmti-bindings = "3.0.2"
 ristretto_classfile = "0.34.0"

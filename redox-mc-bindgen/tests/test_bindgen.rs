@@ -1,10 +1,16 @@
+#![allow(clippy::all)]
+
 #[path = "generated/block_pos.rs"]
+#[allow(clippy::all)]
 mod block_pos;
 #[path = "generated/direction.rs"]
+#[allow(clippy::all)]
 mod direction;
 #[path = "generated/identifier.rs"]
+#[allow(clippy::all)]
 mod identifier;
 #[path = "generated/resource_key.rs"]
+#[allow(clippy::all)]
 mod resource_key;
 
 pub use block_pos::BlockPos;

@@ -183,21 +183,24 @@
 **Description:** Crear una herramienta CLI en Rust que lea archivos `.class` directamente desde los archivos `.jar` de Minecraft (e.g. `server-inner/server-26.3.jar` o librerías) y genere bindings en Rust tipados con firmas y descriptores JNI automáticos para tipos comunes (`Identifier`, `ResourceKey`, `BlockPos`, `Direction`).
 
 **Acceptance criteria:**
-- [ ] Parsea `.class` empaquetados en `.jar` extrayendo clases, interfaces, firmas de métodos y descriptores de campos.
-- [ ] Emite código Rust sintácticamente correcto que encapsula las llamadas JNI y cachea `jmethodID` y `jfieldID`.
-- [ ] No requiere código fuente Java decompilado para funcionar.
+- [x] Parsea `.class` empaquetados en `.jar` extrayendo clases, interfaces, firmas de métodos y descriptores de campos.
+- [x] Emite código Rust sintácticamente correcto que encapsula las llamadas JNI y cachea `jmethodID` y `jfieldID`.
+- [x] No requiere código fuente Java decompilado para funcionar.
 
 **Verification:**
-- [ ] Build succeeds: `cargo build -p redox-mc-bindgen`
-- [ ] Tests pass: `cargo run -p redox-mc-bindgen -- --jar /home/ender/server-inner/server-26.3.jar --class net/minecraft/resources/Identifier` y compilar el archivo emitido con `cargo check`.
+- [x] Build succeeds: `cargo build -p redox-mc-bindgen`
+- [x] Tests pass: `cargo run -p redox-mc-bindgen -- --jar /home/ender/server-inner/server-26.3.jar --class net/minecraft/resources/Identifier` y compilar el archivo emitido con `cargo check`.
 
 **Dependencies:** Task 2.1
 
 **Files likely touched:**
 - `redox-mc-bindgen/Cargo.toml`
 - `redox-mc-bindgen/src/main.rs`
+- `redox-mc-bindgen/src/lib.rs`
+- `redox-mc-bindgen/src/model.rs`
 - `redox-mc-bindgen/src/jar_reader.rs`
 - `redox-mc-bindgen/src/emitter.rs`
+- `redox-mc-bindgen/tests/test_bindgen.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 

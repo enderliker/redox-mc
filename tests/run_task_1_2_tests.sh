@@ -7,6 +7,7 @@ AGENT_SO="${ROOT_DIR}/target/debug/libredox_mc_loader.so"
 echo "=== Building redox-mc-bridge and compiling agent ==="
 "${ROOT_DIR}/redox-mc-bridge/build.sh"
 cargo build -p redox-mc-loader
+cargo build -p test-mod
 
 if [ ! -f "${AGENT_SO}" ]; then
     echo "ERROR: Agent shared library not found at ${AGENT_SO}"
@@ -59,6 +60,26 @@ echo "${INIT_OUTPUT}" | grep "Native RedoxBridge.onBootstrapEntry() invoked from
 echo "${INIT_OUTPUT}" | grep "Successfully transformed class 'net/minecraft/core/registries/BuiltInRegistries'"
 echo "${INIT_OUTPUT}" | grep "Native RedoxBridge.onRegisterContent() invoked before BuiltInRegistries.freeze()."
 echo "[TEST] PASS: Bytecode wrapper method successfully intercepted and executed before vanilla logic without VerifyError."
+
+echo ""
+echo "=== Running Test 5: Task 1.6 Vertical Slice (Dynamic Mod Loading & Execution) ==="
+SLICE_TEST_DIR=$(mktemp -d /tmp/redox_slice_test_XXXXXX)
+mkdir -p "${SLICE_TEST_DIR}/mods/test_mod"
+cp "${ROOT_DIR}/examples/test-mod/mod.toml" "${SLICE_TEST_DIR}/mods/test_mod/"
+cp "${ROOT_DIR}/target/debug/libtest_mod.so" "${SLICE_TEST_DIR}/mods/test_mod/"
+
+cd "${SLICE_TEST_DIR}"
+MOD_SERVER_OUTPUT=$(java -agentpath:"${AGENT_SO}" -jar "${BUNDLER_JAR}" --initSettings 2>&1)
+cd "${ROOT_DIR}"
+rm -rf "${SLICE_TEST_DIR}"
+
+echo "${MOD_SERVER_OUTPUT}" | grep "Scanning for native mods in:"
+echo "${MOD_SERVER_OUTPUT}" | grep "Resolved deterministic load order for 1 mod(s):"
+echo "${MOD_SERVER_OUTPUT}" | grep "Loading native mod 'test_mod' from"
+echo "${MOD_SERVER_OUTPUT}" | grep "Native Rust mod initialized successfully via redox_mod_init()!"
+echo "${MOD_SERVER_OUTPUT}" | grep "Dispatching Bootstrap.bootStrap() hook to 1 loaded mod(s)..."
+echo "${MOD_SERVER_OUTPUT}" | grep "Hook received: Bootstrap.bootStrap() entered! Game is bootstrapping vanilla registries."
+echo "[TEST] PASS: Vertical slice fully operational! Native Rust mod discovered, loaded, and executed inside Minecraft."
 
 echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"

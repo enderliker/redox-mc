@@ -1,0 +1,8 @@
+id = "test_mod"
+name = "Redox Test Mod"
+version = "0.1.0"
+side = "both"
+min_loader_version = ">=0.1.0"
+description = "A demonstration native mod running in pure Rust"
+authors = ["Ender"]
+license = "MIT"

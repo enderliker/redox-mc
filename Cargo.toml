@@ -3,6 +3,7 @@ members = [
     "redox-mc-adapter-api",
     "redox-mc-adapter-26-3",
     "redox-mc-loader",
+    "examples/test-mod",
 ]
 resolver = "2"
 

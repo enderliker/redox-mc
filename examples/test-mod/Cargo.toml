@@ -1,0 +1,10 @@
+[package]
+name = "test-mod"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "test_mod"
+crate-type = ["cdylib"]
+
+[dependencies]

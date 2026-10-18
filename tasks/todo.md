@@ -124,13 +124,13 @@
 **Description:** Implementar en `redox-mc-loader` el descubrimiento de binarios `.so`/`.dll` en `mods/`, asociándolos a su `mod.toml`. Cargar cada biblioteca mediante `libloading`, resolver el símbolo `redox_mod_init` respetando el orden determinista, y verificar la ejecución completa con un mod de ejemplo `examples/test-mod` que se suscriba al hook de bootstrap.
 
 **Acceptance criteria:**
-- [ ] `examples/test-mod` compila como `libtest_mod.so` conteniendo su `mod.toml`.
-- [ ] El loader detecta el mod, valida su compatibilidad y lo carga en el orden determinista establecido.
-- [ ] Al arrancar el servidor dedicado con `java -agentpath`, el hook de bootstrap se dispara y el código Rust del mod se ejecuta con éxito en el proceso.
+- [x] `examples/test-mod` compila como `libtest_mod.so` conteniendo su `mod.toml`.
+- [x] El loader detecta el mod, valida su compatibilidad y lo carga en el orden determinista establecido.
+- [x] Al arrancar el servidor dedicado con `java -agentpath`, el hook de bootstrap se dispara y el código Rust del mod se ejecuta con éxito en el proceso.
 
 **Verification:**
-- [ ] Build succeeds: `cargo build -p test-mod`
-- [ ] Manual check: Arrancar `server.jar` con el mod en `mods/` y confirmar en los logs la salida del mod antes de que el servidor empiece a escuchar conexiones.
+- [x] Build succeeds: `cargo build -p test-mod`
+- [x] Manual check: Arrancar `server.jar` con el mod en `mods/` y confirmar en los logs la salida del mod antes de que el servidor empiece a escuchar conexiones.
 
 **Dependencies:** Task 1.5
 
@@ -145,10 +145,10 @@
 ---
 
 ## Checkpoint: Slice Vertical Funcional
-- [ ] La JVM arranca con `-agentpath:libredox_mc_loader.so` contra `server.jar` con el bundler activo.
-- [ ] `redox-mc-bridge-core` se resuelve en el bootstrap search y el hook de `Bootstrap.bootStrap()` funciona sin `VerifyError`.
-- [ ] `test-mod` se carga en orden determinista y ejecuta código Rust dentro del proceso de Minecraft.
-- [ ] El servidor finaliza el arranque con éxito.
+- [x] La JVM arranca con `-agentpath:libredox_mc_loader.so` contra `server.jar` con el bundler activo.
+- [x] `redox-mc-bridge-core` se resuelve en el bootstrap search y el hook de `Bootstrap.bootStrap()` funciona sin `VerifyError`.
+- [x] `test-mod` se carga en orden determinista y ejecuta código Rust dentro del proceso de Minecraft.
+- [x] El servidor finaliza el arranque con éxito.
 
 ---
 

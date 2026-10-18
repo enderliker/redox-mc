@@ -107,6 +107,9 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBootstrapEnt
     if let Err(err) = define_game_bridge_classes(env) {
         eprintln!("[redox-mc-loader] Warning in onBootstrapEntry: {}", err);
     }
+
+    // Discover, load native mods in deterministic order and dispatch bootstrap event
+    crate::mod_loader::on_bootstrap_entry();
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onRegisterContent()

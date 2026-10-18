@@ -32,8 +32,6 @@ pub struct HookTarget {
 }
 
 /// Trait implemented by version-specific adapters (e.g. redox-mc-adapter-26-3).
-
-
 pub trait VersionAdapter: Send + Sync {
     /// Minecraft version string (e.g. "26.3")
     fn version_id(&self) -> &'static str;
@@ -49,7 +47,9 @@ pub trait VersionAdapter: Send + Sync {
 
     /// Finds a hook target by internal class name (e.g. "net/minecraft/server/Bootstrap")
     fn find_hook(&self, class_name: &str) -> Option<&'static HookTarget> {
-        self.hook_targets().iter().find(|t| t.class_name == class_name)
+        self.hook_targets()
+            .iter()
+            .find(|t| t.class_name == class_name)
     }
 
     /// Package prefix for game classes (defaults to "net/minecraft/")

@@ -57,8 +57,6 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Adapter26_3;
 
-
-
 impl VersionAdapter for Adapter26_3 {
     fn version_id(&self) -> &'static str {
         VERSION_ID

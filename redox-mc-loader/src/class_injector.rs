@@ -1,8 +1,8 @@
 use jvmti_bindings::sys::jni;
 use std::ffi::CString;
 use std::ptr;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::Mutex;
 
 // Global reference to the game's ClassLoader (captured from the first net/minecraft/ class)
 static GAME_CLASS_LOADER: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(ptr::null_mut());
@@ -43,7 +43,7 @@ pub unsafe fn on_class_file_load(
         if !global_ref.is_null() {
             match GAME_CLASS_LOADER.compare_exchange(
                 ptr::null_mut(),
-                global_ref as *mut std::ffi::c_void,
+                global_ref,
                 Ordering::Release,
                 Ordering::Relaxed,
             ) {
@@ -123,7 +123,10 @@ pub unsafe fn define_class(
             ((**env).ExceptionDescribe)(env);
             ((**env).ExceptionClear)(env);
         }
-        return Err(format!("Failed to define class '{}' (exception cleared)", name));
+        return Err(format!(
+            "Failed to define class '{}' (exception cleared)",
+            name
+        ));
     }
 
     if defined_class.is_null() {
@@ -146,7 +149,9 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
 
     let loader = get_game_class_loader();
     if loader.is_null() {
-        return Err("Cannot define bridge-game classes: game classloader has not been captured yet!".into());
+        return Err(
+            "Cannot define bridge-game classes: game classloader has not been captured yet!".into(),
+        );
     }
 
     println!("[redox-mc-loader] Defining bridge-game classes in game classloader (superclasses first)...");
@@ -214,12 +219,8 @@ pub unsafe fn verify_real_minecraft_subclass(env: *mut jni::JNIEnv) -> Result<St
     // Call static method: TestMinecraftSavedData.getTestStatus()
     let status_name = CString::new("getTestStatus").unwrap();
     let status_sig = CString::new("()Ljava/lang/String;").unwrap();
-    let status_mid = ((**env).GetStaticMethodID)(
-        env,
-        item_class,
-        status_name.as_ptr(),
-        status_sig.as_ptr(),
-    );
+    let status_mid =
+        ((**env).GetStaticMethodID)(env, item_class, status_name.as_ptr(), status_sig.as_ptr());
     if status_mid.is_null() {
         if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
             ((**env).ExceptionDescribe)(env);
@@ -230,18 +231,20 @@ pub unsafe fn verify_real_minecraft_subclass(env: *mut jni::JNIEnv) -> Result<St
 
     let j_res = ((**env).CallStaticObjectMethod)(env, item_class, status_mid) as jni::jstring;
     if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE || j_res.is_null() {
-        eprintln!("[redox-mc-loader] ERROR: Exception during TestMinecraftSavedData.getTestStatus()!");
+        eprintln!(
+            "[redox-mc-loader] ERROR: Exception during TestMinecraftSavedData.getTestStatus()!"
+        );
         ((**env).ExceptionDescribe)(env);
         ((**env).ExceptionClear)(env);
         return Err("Failed to execute getTestStatus".into());
     }
 
     let c_chars = ((**env).GetStringUTFChars)(env, j_res, std::ptr::null_mut());
-    let res_str = std::ffi::CStr::from_ptr(c_chars).to_string_lossy().to_string();
+    let res_str = std::ffi::CStr::from_ptr(c_chars)
+        .to_string_lossy()
+        .to_string();
     ((**env).ReleaseStringUTFChars)(env, j_res, c_chars);
 
     println!("[redox-mc-loader] [VERIFY] {}", res_str);
     Ok(res_str)
 }
-
-

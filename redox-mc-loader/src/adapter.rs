@@ -12,5 +12,3 @@ pub fn active_adapter() -> &'static dyn VersionAdapter {
         compile_error!("No Minecraft version adapter enabled. Enable feature 'mc-26-3'.");
     }
 }
-
-

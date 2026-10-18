@@ -16,7 +16,6 @@ fn find_minecraft_server_jar() -> Option<PathBuf> {
         }
     }
 
-
     let candidates = [
         "../../versions/26.3/server-26.3.jar",
         "../versions/26.3/server-26.3.jar",
@@ -25,11 +24,13 @@ fn find_minecraft_server_jar() -> Option<PathBuf> {
         "/home/ender/rustmc/versions/26.3/server-26.3.jar",
     ];
 
-
     for candidate in &candidates {
         let p = Path::new(candidate);
         if p.exists() {
-            return Some(p.canonicalize().unwrap_or_else(|_| PathBuf::from(candidate)));
+            return Some(
+                p.canonicalize()
+                    .unwrap_or_else(|_| PathBuf::from(candidate)),
+            );
         }
     }
 
@@ -43,7 +44,10 @@ fn test_hook_table_matches_bytecode() {
         return;
     };
 
-    println!("Testing hook table against real Minecraft jar: {:?}", jar_path);
+    println!(
+        "Testing hook table against real Minecraft jar: {:?}",
+        jar_path
+    );
 
     for hook in HOOK_TARGETS {
         let binary_name = hook.class_name.replace('/', ".");
@@ -88,5 +92,8 @@ fn test_hook_table_matches_bytecode() {
         );
     }
 
-    println!("All {} hook targets verified successfully against Minecraft jar bytecode!", HOOK_TARGETS.len());
+    println!(
+        "All {} hook targets verified successfully against Minecraft jar bytecode!",
+        HOOK_TARGETS.len()
+    );
 }

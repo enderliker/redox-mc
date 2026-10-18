@@ -1,3 +1,5 @@
+#![allow(clippy::missing_safety_doc)]
+
 pub mod adapter;
 pub mod bridge_jni;
 pub mod class_injector;
@@ -22,7 +24,9 @@ fn extract_and_inject_bridge_core(jvmti: &Jvmti) -> bool {
 
     let target_jar = match std::fs::create_dir_all(&primary_dir) {
         Ok(_) => primary_dir.join("bridge-core.jar"),
-        Err(_) => std::env::temp_dir().join("redoxmc_cache").join("bridge-core.jar"),
+        Err(_) => std::env::temp_dir()
+            .join("redoxmc_cache")
+            .join("bridge-core.jar"),
     };
 
     if let Some(parent) = target_jar.parent() {
@@ -83,13 +87,19 @@ impl Agent for RedoxMCAgent {
         let mut caps = jvmti::jvmtiCapabilities::default();
         caps.set_can_generate_all_class_hook_events(true);
         if let Err(err) = jvmti.add_capabilities(&caps) {
-            eprintln!("[redox-mc-loader] ERROR: Failed to add JVMTI capabilities: {:?}", err);
+            eprintln!(
+                "[redox-mc-loader] ERROR: Failed to add JVMTI capabilities: {:?}",
+                err
+            );
             return jni::JNI_ERR;
         }
 
         // Configure default trampolines for Agent trait callbacks
         if let Err(err) = jvmti.set_default_agent_callbacks() {
-            eprintln!("[redox-mc-loader] ERROR: Failed to set default agent callbacks: {:?}", err);
+            eprintln!(
+                "[redox-mc-loader] ERROR: Failed to set default agent callbacks: {:?}",
+                err
+            );
             return jni::JNI_ERR;
         }
 
@@ -100,7 +110,10 @@ impl Agent for RedoxMCAgent {
             jvmti::JVMTI_EVENT_VM_INIT,
             jvmti::JVMTI_EVENT_VM_DEATH,
         ]) {
-            eprintln!("[redox-mc-loader] ERROR: Failed to enable global events: {:?}", err);
+            eprintln!(
+                "[redox-mc-loader] ERROR: Failed to enable global events: {:?}",
+                err
+            );
             return jni::JNI_ERR;
         }
 
@@ -116,14 +129,18 @@ impl Agent for RedoxMCAgent {
         if let Some(jni) = context.jni() {
             unsafe {
                 if let Err(e) = bridge_jni::register_bridge_natives(jni.raw()) {
-                    eprintln!("[redox-mc-loader] Warning registering bridge natives in vm_init: {}", e);
+                    eprintln!(
+                        "[redox-mc-loader] Warning registering bridge natives in vm_init: {}",
+                        e
+                    );
                 }
             }
         }
     }
 
     fn class_prepare(&self, context: CallbackContext<'_>, event: ClassEvent) {
-        let Ok((signature, _)) = (unsafe { context.jvmti().get_class_signature(event.class()) }) else {
+        let Ok((signature, _)) = (unsafe { context.jvmti().get_class_signature(event.class()) })
+        else {
             return;
         };
 
@@ -136,7 +153,10 @@ impl Agent for RedoxMCAgent {
                         adapter::active_adapter().server_main_class()
                     );
                     if let Err(e) = class_injector::verify_real_minecraft_subclass(jni.raw()) {
-                        eprintln!("[redox-mc-loader] ERROR in verify_real_minecraft_subclass: {}", e);
+                        eprintln!(
+                            "[redox-mc-loader] ERROR in verify_real_minecraft_subclass: {}",
+                            e
+                        );
                     }
                 }
             }
@@ -164,5 +184,3 @@ impl Agent for RedoxMCAgent {
 }
 
 export_agent!(RedoxMCAgent);
-
-

@@ -1,4 +1,6 @@
-use crate::class_injector::{self, define_class, define_game_bridge_classes, get_game_class_loader};
+use crate::class_injector::{
+    self, define_class, define_game_bridge_classes, get_game_class_loader,
+};
 use jvmti_bindings::sys::jni;
 use std::ffi::{CStr, CString};
 
@@ -88,7 +90,10 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_init(
 ) {
     println!("[redox-mc-loader] Native RedoxBridge.init() invoked from Java.");
     if let Err(err) = define_game_bridge_classes(env) {
-        eprintln!("[redox-mc-loader] Warning during RedoxBridge.init(): {}", err);
+        eprintln!(
+            "[redox-mc-loader] Warning during RedoxBridge.init(): {}",
+            err
+        );
     }
 }
 
@@ -181,5 +186,3 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_testDefineClas
         }
     }
 }
-
-

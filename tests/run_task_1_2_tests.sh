@@ -47,5 +47,19 @@ echo "${SERVER_OUTPUT}" | grep "SUCCESS: TestMinecraftSavedData instantiated: ne
 echo "${SERVER_OUTPUT}" | grep "Option"
 
 echo ""
-echo ">>> ALL TASK 1.2 TESTS PASSED! <<<"
+echo "=== Running Test 4: Task 1.4 Bytecode Wrapper Hook Execution (--initSettings) ==="
+INIT_TEST_DIR=$(mktemp -d /tmp/redox_init_test_XXXXXX)
+cd "${INIT_TEST_DIR}"
+INIT_OUTPUT=$(java -agentpath:"${AGENT_SO}" -jar "${BUNDLER_JAR}" --initSettings 2>&1)
+cd "${ROOT_DIR}"
+rm -rf "${INIT_TEST_DIR}"
+
+echo "${INIT_OUTPUT}" | grep "Successfully transformed class 'net/minecraft/server/Bootstrap'"
+echo "${INIT_OUTPUT}" | grep "Native RedoxBridge.onBootstrapEntry() invoked from Bootstrap.bootStrap()."
+echo "${INIT_OUTPUT}" | grep "Successfully transformed class 'net/minecraft/core/registries/BuiltInRegistries'"
+echo "${INIT_OUTPUT}" | grep "Native RedoxBridge.onRegisterContent() invoked before BuiltInRegistries.freeze()."
+echo "[TEST] PASS: Bytecode wrapper method successfully intercepted and executed before vanilla logic without VerifyError."
+
+echo ""
+echo ">>> ALL INTEGRATION TESTS PASSED! <<<"
 

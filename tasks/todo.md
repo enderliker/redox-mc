@@ -79,13 +79,13 @@
 **Description:** Realizar un spike de investigación sobre crates de Rust para parsing y escritura de classfiles Java 25 (formato 69.0). Implementar en Rust dentro de `ClassFileLoadHook` la técnica del "método envoltorio": renombrar el método original definido en `redox-mc-adapter-26-3` (ej. `bootStrap()`) a `bootStrap$original()` y generar un nuevo método con el nombre y firma original que llame a `RedoxBridge.onBootstrapEntry()` y luego a `bootStrap$original()`, evitando la necesidad de recalcular StackMapTables.
 
 **Acceptance criteria:**
-- [ ] Se valida un crate de Rust (o implementación enfocada) capaz de leer y escribir classfiles versión 69.0 sin corromper el pool de constantes.
-- [ ] La transformación se ejecuta íntegramente en código Rust dentro de `ClassFileLoadHook` sin invocar clases Java intermedias.
-- [ ] Al cargar `Bootstrap`, el método envoltorio se genera válidamente y se ejecuta antes que la lógica de Minecraft sin provocar `VerifyError`.
+- [x] Se valida un crate de Rust (`ristretto_classfile = "0.34.0"`) capaz de leer y escribir classfiles versión 69.0 sin corromper el pool de constantes.
+- [x] La transformación se ejecuta íntegramente en código Rust dentro de `ClassFileLoadHook` sin invocar clases Java intermedias.
+- [x] Al cargar `Bootstrap`, el método envoltorio se genera válidamente y se ejecuta antes que la lógica de Minecraft sin provocar `VerifyError`.
 
 **Verification:**
-- [ ] Tests pass: Test unitario en Rust que parsea un `.class` de Java 25, aplica el método envoltorio y valida su estructura con `javap`.
-- [ ] Manual check: Ejecutar `server.jar` con el agente y comprobar la traza de ejecución del hook en consola.
+- [x] Tests pass: Tests unitarios e integración en Rust (`redox-mc-loader/tests/test_wrapper_transformer.rs`) validando parsing de descriptores, transformación de `Bootstrap.class` real y clase personalizada con validación estructural vía `javap -v -p`.
+- [x] Manual check: Ejecución del `server.jar` real (`--initSettings`) con el agente confirmando intercepción y ejecución de `Bootstrap.bootStrap()` y `BuiltInRegistries.freeze()` sin `VerifyError`.
 
 **Dependencies:** Task 1.2, Task 1.3
 

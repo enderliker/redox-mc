@@ -3,6 +3,7 @@
 pub mod adapter;
 pub mod bridge_jni;
 pub mod class_injector;
+pub mod transformer;
 
 use jvmti_bindings::prelude::*;
 use jvmti_bindings::sys::jni;
@@ -170,13 +171,51 @@ impl Agent for RedoxMCAgent {
     fn class_file_load_hook<'callback>(
         &self,
         context: CallbackContext<'callback>,
-        event: ClassFileLoadHookEvent<'callback>,
+        mut event: ClassFileLoadHookEvent<'callback>,
     ) {
-        // Capture global reference to the game classloader on the FIRST net/minecraft/* class
+        // 1. Capture global reference to the game classloader on the FIRST net/minecraft/* class
         if let Some(jni) = context.jni() {
             if let Some(name_cow) = event.name_str().ok().flatten() {
                 unsafe {
                     class_injector::on_class_file_load(jni.raw(), event.loader(), &name_cow);
+                }
+            }
+        }
+
+        // 2. Check if this class matches any hook in the active version adapter
+        let hooks = adapter::active_adapter().hook_targets();
+        let class_bytes = event.class_data();
+        if class_bytes.is_empty() {
+            return;
+        }
+
+        match transformer::transform_class(class_bytes, hooks) {
+            Ok(Some(transformed_bytes)) => {
+                if let Some(name) = event.name_str().ok().flatten() {
+                    println!(
+                        "[redox-mc-loader] Successfully transformed class '{}' ({} -> {} bytes)",
+                        name,
+                        class_bytes.len(),
+                        transformed_bytes.len()
+                    );
+                }
+                if let Err(err) = event.set_transformed_class(&context, &transformed_bytes) {
+                    eprintln!(
+                        "[redox-mc-loader] Failed to set transformed class in JVMTI: {:?}",
+                        err
+                    );
+                }
+            }
+            Ok(None) => {
+                // Class was not a target or did not need transformation
+            }
+            Err(err) => {
+                // Never crash the JVM on transformer error: fallback gracefully to original class
+                if let Some(name) = event.name_str().ok().flatten() {
+                    eprintln!(
+                        "[redox-mc-loader] Warning: Bytecode transformation failed for '{}': {}. Falling back to original bytecode.",
+                        name, err
+                    );
                 }
             }
         }

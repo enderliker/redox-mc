@@ -163,6 +163,7 @@ dependencies = [
  "redox-mc-adapter-26-3",
  "redox-mc-adapter-api",
  "ristretto_classfile",
+ "thiserror",
 ]
 
 [[package]]

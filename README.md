@@ -1,16 +1,16 @@
-# RustMC
+# Redox-MC
 
 A native Rust modloader for Minecraft Java Edition.
 
-RustMC allows writing Minecraft mods in 100% native Rust, compiled directly to native shared libraries (`.so`, `.dll`, `.dylib`) rather than running as `.jar` bytecode on the JVM. The modloader attaches to the JVM via a high-performance JVMTI agent and orchestrates mod loading, registry hooks, and native events with zero overhead.
+Redox-MC allows writing Minecraft mods in 100% native Rust, compiled directly to native shared libraries (`.so`, `.dll`, `.dylib`) rather than running as `.jar` bytecode on the JVM. The modloader attaches to the JVM via a high-performance JVMTI agent and orchestrates mod loading, registry hooks, and native events with zero overhead.
 
 ## Project Status
 
 - **Current Phase:** Phase 1 (Foundation and Vertical Slice).
 - **Completed Tasks:**
-  - **Task 1.1:** Core JVMTI agent in Rust (`rustmc-loader`).
+  - **Task 1.1:** Core JVMTI agent in Rust (`redox-mc-loader`).
   - **Task 1.2:** Three-tier Java bridge architecture (`bridge-core`, `bridge-game`, `bridge-client`), isolated `URLClassLoader` capture, and safe `DefineClass` outside hooks.
-  - **Task 1.3:** Decoupled version adapter architecture (`rustmc-adapter-api`, `rustmc-adapter-26-3`), canonical hook table, and bytecode validation tests.
+  - **Task 1.3:** Decoupled version adapter architecture (`redox-mc-adapter-api`, `redox-mc-adapter-26-3`), canonical hook table, and bytecode validation tests.
 
 ## Compilation and Testing
 
@@ -21,7 +21,7 @@ RustMC allows writing Minecraft mods in 100% native Rust, compiled directly to n
 ### Build
 ```bash
 # 1. Compile Java bridge modules
-./rustmc-bridge/build.sh
+./redox-mc-bridge/build.sh
 
 # 2. Build Rust workspace
 cargo build --workspace
@@ -32,6 +32,7 @@ cargo test --workspace
 # 4. Run full agent integration tests
 ./tests/run_task_1_2_tests.sh
 ```
+
 
 ## Legal Disclaimer
 

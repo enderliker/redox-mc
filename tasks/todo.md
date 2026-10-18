@@ -3,35 +3,35 @@
 ## Fase 1: Fundación y Slice Vertical Mínimo
 
 ### Task 1.1: Agente JVMTI Base en Rust
-**Description:** Crear el crate `rustmc-loader` configurado como `cdylib`, implementando el punto de entrada estándar `Agent_OnLoad` de JVMTI. Inicializar el entorno, guardar los punteros a `JavaVM` y `jvmtiEnv`, activar capacidades (`can_generate_all_class_hook_events`) y registrar el callback `ClassFileLoadHook`. Usar las funciones canónicas de JVMTI `AddToBootstrapClassLoaderSearch` y `AddToSystemClassLoaderSearch`.
+**Description:** Crear el crate `redox-mc-loader` configurado como `cdylib`, implementando el punto de entrada estándar `Agent_OnLoad` de JVMTI. Inicializar el entorno, guardar los punteros a `JavaVM` y `jvmtiEnv`, activar capacidades (`can_generate_all_class_hook_events`) y registrar el callback `ClassFileLoadHook`. Usar las funciones canónicas de JVMTI `AddToBootstrapClassLoaderSearch` y `AddToSystemClassLoaderSearch`.
 
 **Acceptance criteria:**
-- [x] Compila como `librustmc_loader.so` sin errores ni advertencias.
-- [x] `java -agentpath:librustmc_loader.so -version` inicializa el agente, imprime el banner informativo y finaliza con código 0.
+- [x] Compila como `libredox_mc_loader.so` sin errores ni advertencias.
+- [x] `java -agentpath:libredox_mc_loader.so -version` inicializa el agente, imprime el banner informativo y finaliza con código 0.
 - [x] La limpieza en `VMDeath` libera recursos sin producir fallos de segmentación.
 
 **Verification:**
-- [x] Build succeeds: `cargo build -p rustmc-loader`
-- [x] Manual check: Ejecutar `java -agentpath:target/debug/librustmc_loader.so -version` en la terminal.
+- [x] Build succeeds: `cargo build -p redox-mc-loader`
+- [x] Manual check: Ejecutar `java -agentpath:target/debug/libredox_mc_loader.so -version` en la terminal.
 
 **Dependencies:** None
 
 **Files likely touched:**
-- `rustmc-loader/Cargo.toml`
-- `rustmc-loader/src/lib.rs`
-- `rustmc-loader/src/jvmti.rs`
+- `redox-mc-loader/Cargo.toml`
+- `redox-mc-loader/src/lib.rs`
+- `redox-mc-loader/src/jvmti.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
 ### Task 1.2: Arquitectura del Puente Java y Manejo del Bundler
-**Description:** Implementar la arquitectura del puente Java dividida en tres módulos: `rustmc-bridge-core` (cero dependencias de Minecraft, contiene `RustBridge` y se añade con `AddToBootstrapClassLoaderSearch`), `rustmc-bridge-game` (extiende clases comunes de Minecraft) y `rustmc-bridge-client` (reservado para el cliente). Para resolver el aislamiento del `URLClassLoader` del bundler, capturar el `jobject loader` recibido en `ClassFileLoadHook` cuando se carga la primera clase en `net/minecraft/*` (ignorando el bundler), guardarlo como `GlobalReference` y, fuera del hook (en la primera llamada del puente), utilizar JNI `DefineClass` sobre ese classloader para definir las clases de `bridge-game` (superclases primero).
+**Description:** Implementar la arquitectura del puente Java dividida en tres módulos: `redox-mc-bridge-core` (cero dependencias de Minecraft, contiene `RedoxBridge` y se añade con `AddToBootstrapClassLoaderSearch`), `redox-mc-bridge-game` (extiende clases comunes de Minecraft) y `redox-mc-bridge-client` (reservado para el cliente). Para resolver el aislamiento del `URLClassLoader` del bundler, capturar el `jobject loader` recibido en `ClassFileLoadHook` cuando se carga la primera clase en `net/minecraft/*` (ignorando el bundler), guardarlo como `GlobalReference` y, fuera del hook (en la primera llamada del puente), utilizar JNI `DefineClass` sobre ese classloader para definir las clases de `bridge-game` (superclases primero).
 
 **Acceptance criteria:**
-- [x] `rustmc-bridge-core` se compila sin dependencias del jar de Minecraft y es visible globalmente en la JVM tras `AddToBootstrapClassLoaderSearch`.
+- [x] `redox-mc-bridge-core` se compila sin dependencias del jar de Minecraft y es visible globalmente en la JVM tras `AddToBootstrapClassLoaderSearch`.
 - [x] En `ClassFileLoadHook`, la intercepción de la primera clase `net/minecraft/*` captura y preserva la referencia global al classloader del juego.
-- [x] Fuera del hook, `DefineClass` define con éxito `RustGameBridgeBase` y `RustGameBridge` en el classloader del juego, resolviendo superclases primero. Si `DefineClass` falla, el error se registra con el nombre de la clase, se limpia la excepción y no tumba la JVM.
+- [x] Fuera del hook, `DefineClass` define con éxito `RedoxGameBridgeBase` y `RedoxGameBridge` en el classloader del juego, resolviendo superclases primero. Si `DefineClass` falla, el error se registra con el nombre de la clase, se limpia la excepción y no tumba la JVM.
 - [x] `bridge-client` queda aislado, evitando que el servidor dedicado cargue tipos gráficos.
 
 **Verification:**
@@ -41,42 +41,42 @@
 **Dependencies:** Task 1.1
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-core/pom.xml`
-- `rustmc-bridge/bridge-core/src/main/java/net/rustmc/bridge/RustBridge.java`
-- `rustmc-bridge/bridge-game/pom.xml`
-- `rustmc-bridge/bridge-client/pom.xml`
-- `rustmc-loader/src/jni.rs`
-- `rustmc-loader/src/class_injector.rs`
+- `redox-mc-bridge/bridge-core/pom.xml`
+- `redox-mc-bridge/bridge-core/src/main/java/net/redoxmc/bridge/RedoxBridge.java`
+- `redox-mc-bridge/bridge-game/pom.xml`
+- `redox-mc-bridge/bridge-client/pom.xml`
+- `redox-mc-loader/src/jni.rs`
+- `redox-mc-loader/src/class_injector.rs`
 
 **Estimated scope:** Large | **Effort:** L (3-5 días)
 
 ---
 
-### Task 1.3: Crate Adaptador de Versión (`rustmc-adapter-26-3`) y Tabla de Hooks
-**Description:** Crear el crate `rustmc-adapter-26-3` que centraliza las constantes, firmas de métodos y descriptores específicos de Minecraft 26.3. Definir la tabla canónica de hooks (`HookTarget { class_name, method_name, method_desc }`) que servirá de entrada a las transformaciones de bytecode en el loader, desacoplando los nombres del motor.
+### Task 1.3: Crate Adaptador de Versión (`redox-mc-adapter-26-3`) y Tabla de Hooks
+**Description:** Crear el crate `redox-mc-adapter-26-3` que centraliza las constantes, firmas de métodos y descriptores específicos de Minecraft 26.3. Definir la tabla canónica de hooks (`HookTarget { class_name, method_name, method_desc }`) que servirá de entrada a las transformaciones de bytecode en el loader, desacoplando los nombres del motor.
 
 **Acceptance criteria:**
 - [x] El crate expone la tabla de hooks para `Bootstrap.bootStrap()` (`()V`), `BuiltInRegistries.freeze()` (`()V`), `MinecraftServer.tickChildren` (`(Ljava/util/function/BooleanSupplier;)V`) y `ServerGamePacketListenerImpl.handleChat` (`(Lnet/minecraft/network/protocol/game/ServerboundChatPacket;)V`).
-- [x] Métodos y traits en `rustmc-adapter-api` para consultar firmas y nombres de clases específicas de 26.3 sin exponerlas al loader principal.
+- [x] Métodos y traits en `redox-mc-adapter-api` para consultar firmas y nombres de clases específicas de 26.3 sin exponerlas al loader principal.
 - [x] Pruebas unitarias e integración en Rust validan que los descriptores JNI corresponden a la especificación de JVM y coinciden exactamente con el bytecode de los jars oficiales.
 
 **Verification:**
-- [x] Tests pass: `cargo test -p rustmc-adapter-26-3`
+- [x] Tests pass: `cargo test -p redox-mc-adapter-26-3`
 - [x] Manual check: Detección en runtime de hooks durante el arranque del `server.jar` real (`server.jar --initSettings`).
 
 **Dependencies:** Task 1.1
 
 **Files likely touched:**
-- `rustmc-adapter-26-3/Cargo.toml`
-- `rustmc-adapter-26-3/src/lib.rs`
-- `rustmc-adapter-26-3/src/hooks.rs`
+- `redox-mc-adapter-26-3/Cargo.toml`
+- `redox-mc-adapter-26-3/src/lib.rs`
+- `redox-mc-adapter-26-3/src/hooks.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
 ### Task 1.4: Transformador de Bytecode en Rust con Método Envoltorio
-**Description:** Realizar un spike de investigación sobre crates de Rust para parsing y escritura de classfiles Java 25 (formato 69.0). Implementar en Rust dentro de `ClassFileLoadHook` la técnica del "método envoltorio": renombrar el método original definido en `rustmc-adapter-26-3` (ej. `bootStrap()`) a `bootStrap$original()` y generar un nuevo método con el nombre y firma original que llame a `RustBridge.onBootstrapEntry()` y luego a `bootStrap$original()`, evitando la necesidad de recalcular StackMapTables.
+**Description:** Realizar un spike de investigación sobre crates de Rust para parsing y escritura de classfiles Java 25 (formato 69.0). Implementar en Rust dentro de `ClassFileLoadHook` la técnica del "método envoltorio": renombrar el método original definido en `redox-mc-adapter-26-3` (ej. `bootStrap()`) a `bootStrap$original()` y generar un nuevo método con el nombre y firma original que llame a `RedoxBridge.onBootstrapEntry()` y luego a `bootStrap$original()`, evitando la necesidad de recalcular StackMapTables.
 
 **Acceptance criteria:**
 - [ ] Se valida un crate de Rust (o implementación enfocada) capaz de leer y escribir classfiles versión 69.0 sin corromper el pool de constantes.
@@ -90,17 +90,17 @@
 **Dependencies:** Task 1.2, Task 1.3
 
 **Files likely touched:**
-- `rustmc-loader/Cargo.toml`
-- `rustmc-loader/src/transformer/mod.rs`
-- `rustmc-loader/src/transformer/wrapper.rs`
-- `rustmc-loader/src/transformer/classfile.rs`
+- `redox-mc-loader/Cargo.toml`
+- `redox-mc-loader/src/transformer/mod.rs`
+- `redox-mc-loader/src/transformer/wrapper.rs`
+- `redox-mc-loader/src/transformer/classfile.rs`
 
 **Estimated scope:** Large | **Effort:** L (3-5 días)
 
 ---
 
 ### Task 1.5: Manifiesto de Mod y Orden de Carga Determinista
-**Description:** Definir el formato del manifiesto de mods (`mod.toml`: id, version, side, dependencies, min_loader_version). Implementar en `rustmc-loader` el parser y el algoritmo de ordenación determinista: validación de compatibilidad con el entorno (ignorar mods cliente en servidor dedicado), resolución topológica de dependencias y ordenación lexicográfica por mod ID en caso de nodos independientes.
+**Description:** Definir el formato del manifiesto de mods (`mod.toml`: id, version, side, dependencies, min_loader_version). Implementar en `redox-mc-loader` el parser y el algoritmo de ordenación determinista: validación de compatibilidad con el entorno (ignorar mods cliente en servidor dedicado), resolución topológica de dependencias y ordenación lexicográfica por mod ID en caso de nodos independientes.
 
 **Acceptance criteria:**
 - [ ] Parser de `mod.toml` robusto ante campos desconocidos y con validación de tipos semver.
@@ -108,20 +108,20 @@
 - [ ] El orden de los mods resultantes es estrictamente determinista entre diferentes ejecuciones y plataformas.
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p rustmc-loader --test manifest_resolution` con diversos grafos de dependencias.
+- [ ] Tests pass: `cargo test -p redox-mc-loader --test manifest_resolution` con diversos grafos de dependencias.
 
 **Dependencies:** Task 1.2, Task 1.4
 
 **Files likely touched:**
-- `rustmc-loader/src/manifest.rs`
-- `rustmc-loader/src/mod_resolver.rs`
+- `redox-mc-loader/src/manifest.rs`
+- `redox-mc-loader/src/mod_resolver.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
 ### Task 1.6: Cargador Dinámico de Mods y Slice Vertical Completo
-**Description:** Implementar en `rustmc-loader` el descubrimiento de binarios `.so`/`.dll` en `mods/`, asociándolos a su `mod.toml`. Cargar cada biblioteca mediante `libloading`, resolver el símbolo `rustmc_mod_init` respetando el orden determinista, y verificar la ejecución completa con un mod de ejemplo `examples/test-mod` que se suscriba al hook de bootstrap.
+**Description:** Implementar en `redox-mc-loader` el descubrimiento de binarios `.so`/`.dll` en `mods/`, asociándolos a su `mod.toml`. Cargar cada biblioteca mediante `libloading`, resolver el símbolo `redox_mod_init` respetando el orden determinista, y verificar la ejecución completa con un mod de ejemplo `examples/test-mod` que se suscriba al hook de bootstrap.
 
 **Acceptance criteria:**
 - [ ] `examples/test-mod` compila como `libtest_mod.so` conteniendo su `mod.toml`.
@@ -135,7 +135,7 @@
 **Dependencies:** Task 1.5
 
 **Files likely touched:**
-- `rustmc-loader/src/mod_loader.rs`
+- `redox-mc-loader/src/mod_loader.rs`
 - `examples/test-mod/Cargo.toml`
 - `examples/test-mod/mod.toml`
 - `examples/test-mod/src/lib.rs`
@@ -145,8 +145,8 @@
 ---
 
 ## Checkpoint: Slice Vertical Funcional
-- [ ] La JVM arranca con `-agentpath:librustmc_loader.so` contra `server.jar` con el bundler activo.
-- [ ] `rustmc-bridge-core` se resuelve en el bootstrap search y el hook de `Bootstrap.bootStrap()` funciona sin `VerifyError`.
+- [ ] La JVM arranca con `-agentpath:libredox_mc_loader.so` contra `server.jar` con el bundler activo.
+- [ ] `redox-mc-bridge-core` se resuelve en el bootstrap search y el hook de `Bootstrap.bootStrap()` funciona sin `VerifyError`.
 - [ ] `test-mod` se carga en orden determinista y ejecuta código Rust dentro del proceso de Minecraft.
 - [ ] El servidor finaliza el arranque con éxito.
 
@@ -154,8 +154,8 @@
 
 ## Fase 2: Arquitectura ABI, Aislamiento y Generador de Bindings
 
-### Task 2.1: Capa `rustmc-abi` y Ownership de Memoria
-**Description:** Crear el crate `rustmc-abi` estableciendo tipos `#[repr(C)]`, vtables y punteros opacos. Implementar la regla estricta de deasignación simétrica: la memoria asignada en el loader se libera en el loader (`rustmc_loader_free_*`), y la asignada en el mod se libera en el mod (`rustmc_mod_free_*`), prohibiendo el cruce de allocators entre diferentes binarios dinámicos.
+### Task 2.1: Capa `redox-mc-abi` y Ownership de Memoria
+**Description:** Crear el crate `redox-mc-abi` estableciendo tipos `#[repr(C)]`, vtables y punteros opacos. Implementar la regla estricta de deasignación simétrica: la memoria asignada en el loader se libera en el loader (`redox_loader_free_*`), y la asignada en el mod se libera en el mod (`redox_mod_free_*`), prohibiendo el cruce de allocators entre diferentes binarios dinámicos.
 
 **Acceptance criteria:**
 - [ ] Toda estructura que cruza la frontera de la biblioteca dinámica implementa `#[repr(C)]`.
@@ -163,23 +163,23 @@
 - [ ] Pruebas unitarias de layout y alineación de memoria garantizan estabilidad binaria.
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p rustmc-abi`
-- [ ] Build succeeds: `cargo check -p rustmc-abi --all-targets`
+- [ ] Tests pass: `cargo test -p redox-mc-abi`
+- [ ] Build succeeds: `cargo check -p redox-mc-abi --all-targets`
 
 **Dependencies:** Task 1.6
 
 **Files likely touched:**
-- `rustmc-abi/Cargo.toml`
-- `rustmc-abi/src/lib.rs`
-- `rustmc-abi/src/types.rs`
-- `rustmc-abi/src/vtable.rs`
-- `rustmc-abi/src/memory.rs`
+- `redox-mc-abi/Cargo.toml`
+- `redox-mc-abi/src/lib.rs`
+- `redox-mc-abi/src/types.rs`
+- `redox-mc-abi/src/vtable.rs`
+- `redox-mc-abi/src/memory.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
-### Task 2.2: Generador de Bindings desde Classfiles (`rustmc-bindgen`)
+### Task 2.2: Generador de Bindings desde Classfiles (`redox-mc-bindgen`)
 **Description:** Crear una herramienta CLI en Rust que lea archivos `.class` directamente desde los archivos `.jar` de Minecraft (e.g. `server-inner/server-26.3.jar` o librerías) y genere bindings en Rust tipados con firmas y descriptores JNI automáticos para tipos comunes (`Identifier`, `ResourceKey`, `BlockPos`, `Direction`).
 
 **Acceptance criteria:**
@@ -188,23 +188,23 @@
 - [ ] No requiere código fuente Java decompilado para funcionar.
 
 **Verification:**
-- [ ] Build succeeds: `cargo build -p rustmc-bindgen`
-- [ ] Tests pass: `cargo run -p rustmc-bindgen -- --jar /home/ender/server-inner/server-26.3.jar --class net/minecraft/resources/Identifier` y compilar el archivo emitido con `cargo check`.
+- [ ] Build succeeds: `cargo build -p redox-mc-bindgen`
+- [ ] Tests pass: `cargo run -p redox-mc-bindgen -- --jar /home/ender/server-inner/server-26.3.jar --class net/minecraft/resources/Identifier` y compilar el archivo emitido con `cargo check`.
 
 **Dependencies:** Task 2.1
 
 **Files likely touched:**
-- `rustmc-bindgen/Cargo.toml`
-- `rustmc-bindgen/src/main.rs`
-- `rustmc-bindgen/src/jar_reader.rs`
-- `rustmc-bindgen/src/emitter.rs`
+- `redox-mc-bindgen/Cargo.toml`
+- `redox-mc-bindgen/src/main.rs`
+- `redox-mc-bindgen/src/jar_reader.rs`
+- `redox-mc-bindgen/src/emitter.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
 ### Task 2.3: Macro de Exportación y Aislamiento de Pánicos en el Mod
-**Description:** Implementar en `rustmc-api` la macro procedural o declarativa `#[rustmc_export]`. Esta macro envuelve el cuerpo de cada función de mod exportada en `std::panic::catch_unwind(AssertUnwindSafe(...))` **dentro del propio `cdylib` del mod**. Si ocurre un pánico, se registra el mensaje y el backtrace nativo en el log, y se retorna un código de error de la ABI (`FfiResult::Panic`) en lugar de abortar el proceso al cruzar la frontera FFI.
+**Description:** Implementar en `redox-mc-api` la macro procedural o declarativa `#[redox_export]`. Esta macro envuelve el cuerpo de cada función de mod exportada en `std::panic::catch_unwind(AssertUnwindSafe(...))` **dentro del propio `cdylib` del mod**. Si ocurre un pánico, se registra el mensaje y el backtrace nativo en el log, y se retorna un código de error de la ABI (`FfiResult::Panic`) en lugar de abortar el proceso al cruzar la frontera FFI.
 
 **Acceptance criteria:**
 - [ ] El pánico es capturado dentro del runtime `std` del mod antes de salir por la frontera `extern "C"`.
@@ -217,28 +217,28 @@
 **Dependencies:** Task 2.1
 
 **Files likely touched:**
-- `rustmc-api/src/macros.rs`
-- `rustmc-loader/src/safety.rs`
+- `redox-mc-api/src/macros.rs`
+- `redox-mc-loader/src/safety.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
 ### Task 2.4: Microbenchmark de Cruces JNI y Frontera de Rendimiento
-**Description:** Implementar un harness de microbenchmark en `rustmc-loader` para medir con precisión la sobrecarga real de llamadas nativas JNI en la máquina local (Java 25 en Linux x86_64). Medir coste de: llamadas sin argumentos, paso de primitivos, strings pequeños y objetos complejos, validando la directriz de diseño declarativo.
+**Description:** Implementar un harness de microbenchmark en `redox-mc-loader` para medir con precisión la sobrecarga real de llamadas nativas JNI en la máquina local (Java 25 en Linux x86_64). Medir coste de: llamadas sin argumentos, paso de primitivos, strings pequeños y objetos complejos, validando la directriz de diseño declarativo.
 
 **Acceptance criteria:**
 - [ ] Ejecuta una suite reproducible de benchmarks registrando latencia promedio y percentiles (p50, p99).
 - [ ] Genera un informe documentando la sobrecarga real (contrastando con la referencia aproximada de 10-25 ns).
 
 **Verification:**
-- [ ] Manual check: `cargo run -p rustmc-loader --bin jni-bench` imprime los resultados estadísticos de latencia.
+- [ ] Manual check: `cargo run -p redox-mc-loader --bin jni-bench` imprime los resultados estadísticos de latencia.
 
 **Dependencies:** Task 2.1
 
 **Files likely touched:**
-- `rustmc-loader/src/bench/mod.rs`
-- `rustmc-loader/src/bench/main.rs`
+- `redox-mc-loader/src/bench/mod.rs`
+- `redox-mc-loader/src/bench/main.rs`
 
 **Estimated scope:** Small | **Effort:** S (1-2 días)
 
@@ -255,11 +255,11 @@
 ## Fase 3: Ciclo de Vida y Sistema de Eventos Simples
 
 ### Task 3.1: Hook de Registro en `BuiltInRegistries.freeze()`
-**Description:** En el callback `ClassFileLoadHook` de `rustmc-loader`, transformar `net.minecraft.core.registries.BuiltInRegistries` aplicando la técnica de método envoltorio sobre `private static void freeze()`, utilizando la definición de hook de `rustmc-adapter-26-3`. Renombrar `freeze()` a `freeze$original()` y generar un wrapper que invoque `RustBridge.onRegisterContent()` inmediatamente antes de `freeze$original()`.
+**Description:** En el callback `ClassFileLoadHook` de `redox-mc-loader`, transformar `net.minecraft.core.registries.BuiltInRegistries` aplicando la técnica de método envoltorio sobre `private static void freeze()`, utilizando la definición de hook de `redox-mc-adapter-26-3`. Renombrar `freeze()` a `freeze$original()` y generar un wrapper que invoque `RedoxBridge.onRegisterContent()` inmediatamente antes de `freeze$original()`.
 
 **Acceptance criteria:**
 - [ ] El hook se dispara exactamente cuando todos los registros vanilla ya contienen sus elementos iniciales creados por `createContents()`.
-- [ ] Durante la ejecución de `RustBridge.onRegisterContent()`, los registros tienen `isFrozen() == false`.
+- [ ] Durante la ejecución de `RedoxBridge.onRegisterContent()`, los registros tienen `isFrozen() == false`.
 - [ ] Inmediatamente después del hook, `freeze$original()` sella todos los registros (`isFrozen() == true`).
 - [ ] No se produce corrupción de stack map frames ni errores de verificación de bytecode.
 
@@ -269,15 +269,15 @@
 **Dependencies:** Task 1.3, Task 1.4, Task 2.3
 
 **Files likely touched:**
-- `rustmc-loader/src/transformer/registry_hook.rs`
-- `rustmc-bridge/bridge-core/src/main/java/net/rustmc/bridge/RustBridge.java`
+- `redox-mc-loader/src/transformer/registry_hook.rs`
+- `redox-mc-bridge/bridge-core/src/main/java/net/redoxmc/bridge/RedoxBridge.java`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
-### Task 3.2: Motor de Eventos Tipado en Rust (`rustmc-api`)
-**Description:** Implementar en `rustmc-api` un bus de eventos pub/sub tipado en Rust con prioridades de ejecución (`HIGHEST`, `NORMAL`, `LOWEST`) y soporte de cancelación (`EventResult::Allow`, `EventResult::Cancel`).
+### Task 3.2: Motor de Eventos Tipado en Rust (`redox-mc-api`)
+**Description:** Implementar en `redox-mc-api` un bus de eventos pub/sub tipado en Rust con prioridades de ejecución (`HIGHEST`, `NORMAL`, `LOWEST`) y soporte de cancelación (`EventResult::Allow`, `EventResult::Cancel`).
 
 **Acceptance criteria:**
 - [ ] Suscripción de callbacks con funciones o closures tipadas.
@@ -285,13 +285,13 @@
 - [ ] Posibilidad de abortar eventos cancelables deteniendo la propagación hacia handlers de menor prioridad.
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p rustmc-api --test event_bus`
+- [ ] Tests pass: `cargo test -p redox-mc-api --test event_bus`
 
 **Dependencies:** Task 2.1
 
 **Files likely touched:**
-- `rustmc-api/src/event/mod.rs`
-- `rustmc-api/src/event/bus.rs`
+- `redox-mc-api/src/event/mod.rs`
+- `redox-mc-api/src/event/bus.rs`
 
 **Estimated scope:** Small | **Effort:** S (1-2 días)
 
@@ -311,8 +311,8 @@
 **Dependencies:** Task 3.1, Task 3.2
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/event/ServerEvents.java`
-- `rustmc-loader/src/events.rs`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/event/ServerEvents.java`
+- `redox-mc-loader/src/events.rs`
 - `examples/test-mod/src/lib.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
@@ -329,7 +329,7 @@
 ## Fase 4: Registro Declarativo de Ítems y Soporte Windows
 
 ### Task 4.1: Clase Puente `GenericRustItem`
-**Description:** Implementar en `rustmc-bridge-game` la clase `GenericRustItem extends Item`. Esta clase se compila contra el jar del juego y se inyecta en su classloader mediante `DefineClass`. Delega interacciones (`use`, `useOn`, `finishUsingItem`) a callbacks nativos en `RustBridge` sólo si el mod declaró comportamiento activo; si el ítem es pasivo, el cruce JNI es omitido.
+**Description:** Implementar en `redox-mc-bridge-game` la clase `GenericRustItem extends Item`. Esta clase se compila contra el jar del juego y se inyecta en su classloader mediante `DefineClass`. Delega interacciones (`use`, `useOn`, `finishUsingItem`) a callbacks nativos en `RedoxBridge` sólo si el mod declaró comportamiento activo; si el ítem es pasivo, el cruce JNI es omitido.
 
 **Acceptance criteria:**
 - [ ] Se instancia correctamente pasando `Item.Properties.setId(id)`.
@@ -337,19 +337,19 @@
 - [ ] La clase reside en `bridge-game` y es accesible para el motor del juego sin conflictos de visibilidad.
 
 **Verification:**
-- [ ] Build succeeds: Compilar `rustmc-bridge-game.jar`.
+- [ ] Build succeeds: Compilar `redox-mc-bridge-game.jar`.
 
 **Dependencies:** Task 1.2, Task 3.1
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/item/GenericRustItem.java`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/item/GenericRustItem.java`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
 ### Task 4.2: Declaración de Ítems y Hash de Registros
-**Description:** Implementar en `rustmc-api` el builder declarativo `ItemDefinition` y en `rustmc-loader` el registro determinista en `BuiltInRegistries.ITEM`. Implementar el generador de hash de contenido de registros (SHA-256 o xxHash sobre los IDs y propiedades de ítems registrados en orden determinista).
+**Description:** Implementar en `redox-mc-api` el builder declarativo `ItemDefinition` y en `redox-mc-loader` el registro determinista en `BuiltInRegistries.ITEM`. Implementar el generador de hash de contenido de registros (SHA-256 o xxHash sobre los IDs y propiedades de ítems registrados en orden determinista).
 
 **Acceptance criteria:**
 - [ ] Sintaxis declarativa: `ItemDefinition::new("testmod:ruby").max_stack_size(64)`.
@@ -357,14 +357,14 @@
 - [ ] Se computa un hash acumulado de todos los ítems registrados disponible para la fase de handshake.
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p rustmc-loader --test registry_hash` confirmando hash idéntico en ejecuciones sucesivas.
+- [ ] Tests pass: `cargo test -p redox-mc-loader --test registry_hash` confirmando hash idéntico en ejecuciones sucesivas.
 
 **Dependencies:** Task 4.1, Task 1.5
 
 **Files likely touched:**
-- `rustmc-api/src/item.rs`
-- `rustmc-loader/src/registry/item.rs`
-- `rustmc-loader/src/registry/hash.rs`
+- `redox-mc-api/src/item.rs`
+- `redox-mc-loader/src/registry/item.rs`
+- `redox-mc-loader/src/registry/hash.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
@@ -391,22 +391,22 @@
 ---
 
 ### Task 4.4: Soporte y Compilación Cruzada para Windows x86_64 (`.dll`)
-**Description:** Configurar el soporte de compilación para la plataforma Windows x86_64 (`x86_64-pc-windows-msvc` / `gnu`) tanto para el loader (`rustmc_loader.dll`) como para los mods (`.dll`). Garantizar que la capa `rustmc-abi`, los shims JNI y el linker generen binarios nativos válidos para Windows antes de implementar los bloques y assets (Tarea 5.3) y el hot-reload (Fase 7).
+**Description:** Configurar el soporte de compilación para la plataforma Windows x86_64 (`x86_64-pc-windows-msvc` / `gnu`) tanto para el loader (`redox_mc_loader.dll`) como para los mods (`.dll`). Garantizar que la capa `redox-mc-abi`, los shims JNI y el linker generen binarios nativos válidos para Windows antes de implementar los bloques y assets (Tarea 5.3) y el hot-reload (Fase 7).
 
 **Acceptance criteria:**
-- [ ] `rustmc-loader` y `test-mod` compilan exitosamente para `x86_64-pc-windows-msvc` (o mingw-w64).
+- [ ] `redox-mc-loader` y `test-mod` compilan exitosamente para `x86_64-pc-windows-msvc` (o mingw-w64).
 - [ ] Los símbolos de exportación JVMTI (`Agent_OnLoad`) y JNI se exportan correctamente sin decoraciones de nombre incorrectas.
-- [ ] `rustmc-abi` valida layouts de tipos compatibles con la ABI de Windows de 64 bits.
+- [ ] `redox-mc-abi` valida layouts de tipos compatibles con la ABI de Windows de 64 bits.
 
 **Verification:**
-- [ ] Build succeeds: `cargo build --target x86_64-pc-windows-gnu -p rustmc-loader -p test-mod` (o cross/cargo clippy para Windows).
+- [ ] Build succeeds: `cargo build --target x86_64-pc-windows-gnu -p redox-mc-loader -p test-mod` (o cross/cargo clippy para Windows).
 
 **Dependencies:** Task 2.1
 
 **Files likely touched:**
-- `rustmc-loader/build.rs`
-- `rustmc-loader/src/lib.rs`
-- `rustmc-abi/src/lib.rs`
+- `redox-mc-loader/build.rs`
+- `redox-mc-loader/src/lib.rs`
+- `redox-mc-abi/src/lib.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
@@ -415,7 +415,7 @@
 ## Fase 5: Recursos Virtuales y Bloques con Assets
 
 ### Task 5.1: Inyector de Paquetes Virtuales (`VirtualModPackResources`)
-**Description:** Implementar en `rustmc-bridge-game` la clase `VirtualModPackResources implements PackResources` (compatible con formatos 97 y 121 de MC 26.3). Interceptar mediante transformación en Rust la creación de `PackRepository` para registrar un `RepositorySource` virtual que sirva streams de memoria consultando a `rustmc-loader` vía JNI.
+**Description:** Implementar en `redox-mc-bridge-game` la clase `VirtualModPackResources implements PackResources` (compatible con formatos 97 y 121 de MC 26.3). Interceptar mediante transformación en Rust la creación de `PackRepository` para registrar un `RepositorySource` virtual que sirva streams de memoria consultando a `redox-mc-loader` vía JNI.
 
 **Acceptance criteria:**
 - [ ] `PackRepository.reload()` descubre el pack virtual tanto en cliente (`CLIENT_RESOURCES`) como en servidor (`SERVER_DATA`).
@@ -428,16 +428,16 @@
 **Dependencies:** Task 3.1, Task 1.2
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/pack/VirtualModPackResources.java`
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/pack/ModRepositorySource.java`
-- `rustmc-loader/src/packs.rs`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/pack/VirtualModPackResources.java`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/pack/ModRepositorySource.java`
+- `redox-mc-loader/src/packs.rs`
 
 **Estimated scope:** Large | **Effort:** L (3-5 días)
 
 ---
 
-### Task 5.2: Clase Puente `GenericRustBlock` y Sincronización de Estados
-**Description:** Implementar en `rustmc-bridge-game` la clase `GenericRustBlock extends Block`. Al registrar el bloque:
+### Task 5.2: Clase Puente `GenericRedoxBlock` y Sincronización de Estados
+**Description:** Implementar en `redox-mc-bridge-game` la clase `GenericRedoxBlock extends Block`. Al registrar el bloque:
 1. Asignar `properties.setId(id)`.
 2. Registrar cada `BlockState` en [`Block.BLOCK_STATE_REGISTRY`](file:///home/ender/rustmc/out-client/net/minecraft/world/level/block/Block.java#L81) e invocar `state.initCache()`.
 3. Crear el `BlockItem` asociado en `BuiltInRegistries.ITEM` y vincularlo en `Item.BY_BLOCK`.
@@ -453,15 +453,15 @@
 **Dependencies:** Task 5.1, Task 4.2
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/block/GenericRustBlock.java`
-- `rustmc-loader/src/registry/block.rs`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/block/GenericRedoxBlock.java`
+- `redox-mc-loader/src/registry/block.rs`
 
 **Estimated scope:** Large | **Effort:** L (3-4 días)
 
 ---
 
 ### Task 5.3: API Declarativa de Bloques y Assets en Rust (con Soporte Windows)
-**Description:** Implementar en `rustmc-api` la declaración de bloques con autogeneración de assets virtuales (`blockstates/<id>.json`, `models/block/<id>.json`, `items/<id>.json` y `loot_table/blocks/<id>.json`). Incorporar las propiedades y estados del bloque al cálculo del hash de contenido determinista. Verificar que los assets se generan y sirven correctamente tanto en Linux como en Windows (preparado en Tarea 4.4).
+**Description:** Implementar en `redox-mc-api` la declaración de bloques con autogeneración de assets virtuales (`blockstates/<id>.json`, `models/block/<id>.json`, `items/<id>.json` y `loot_table/blocks/<id>.json`). Incorporar las propiedades y estados del bloque al cálculo del hash de contenido determinista. Verificar que los assets se generan y sirven correctamente tanto en Linux como en Windows (preparado en Tarea 4.4).
 
 **Acceptance criteria:**
 - [ ] Declaración limpia en Rust: `BlockDefinition::new("testmod:ruby_block").strength(3.0).cube_model("testmod:block/ruby_block")`.
@@ -474,8 +474,8 @@
 **Dependencies:** Task 5.2, Task 4.4
 
 **Files likely touched:**
-- `rustmc-api/src/block.rs`
-- `rustmc-api/src/assets.rs`
+- `redox-mc-api/src/block.rs`
+- `redox-mc-api/src/assets.rs`
 - `examples/test-mod/src/lib.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
@@ -493,7 +493,7 @@
 ## Fase 6: Canales de Red y Handshake de Configuración
 
 ### Task 6.1: Decodificador Universal de Payloads de Mod
-**Description:** Transformar `CustomPacketPayload` en Rust para que los identificadores de canales de mods no caigan en `DiscardedPayload`, sino en `ModRawPayload(Identifier id, byte[] data)` dentro de `rustmc-bridge-game`, reteniendo los bytes originales y despachándolos a la capa nativa.
+**Description:** Transformar `CustomPacketPayload` en Rust para que los identificadores de canales de mods no caigan en `DiscardedPayload`, sino en `ModRawPayload(Identifier id, byte[] data)` dentro de `redox-mc-bridge-game`, reteniendo los bytes originales y despachándolos a la capa nativa.
 
 **Acceptance criteria:**
 - [ ] Paquetes con namespaces de mods retienen el búfer binario completo.
@@ -506,15 +506,15 @@
 **Dependencies:** Task 3.1, Task 1.2
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/network/ModRawPayload.java`
-- `rustmc-loader/src/transformer/network_hook.rs`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/network/ModRawPayload.java`
+- `redox-mc-loader/src/transformer/network_hook.rs`
 
 **Estimated scope:** Small | **Effort:** S (1-2 días)
 
 ---
 
 ### Task 6.2: Handshake en Fase `CONFIGURATION` con Hash de Contenido
-**Description:** Implementar `ModHandshakeConfigurationTask implements ConfigurationTask` en `rustmc-bridge-game`. Interceptar `ServerConfigurationPacketListenerImpl.startConfiguration()` para encolar la tarea. El servidor envía la lista de mods y el hash de contenido de registros calculado en la Fase 4 y 5; si el cliente difiere en mods o en el hash de registros, el servidor desconecta al cliente con un mensaje de error detallado.
+**Description:** Implementar `ModHandshakeConfigurationTask implements ConfigurationTask` en `redox-mc-bridge-game`. Interceptar `ServerConfigurationPacketListenerImpl.startConfiguration()` para encolar la tarea. El servidor envía la lista de mods y el hash de contenido de registros calculado en la Fase 4 y 5; si el cliente difiere en mods o en el hash de registros, el servidor desconecta al cliente con un mensaje de error detallado.
 
 **Acceptance criteria:**
 - [ ] Intercambio de paquetes de configuración antes de la fase `PLAY`.
@@ -527,15 +527,15 @@
 **Dependencies:** Task 6.1, Task 4.2
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/network/ModHandshakeConfigurationTask.java`
-- `rustmc-loader/src/network/handshake.rs`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/network/ModHandshakeConfigurationTask.java`
+- `redox-mc-loader/src/network/handshake.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
 ### Task 6.3: API de Canales de Red en Rust
-**Description:** Exponer en `rustmc-api` funciones para registrar canales y enviar/recibir mensajes tipados: `NetworkChannel::register("testmod:data").on_receive(...)`. Conectar el envío bidireccional mediante `ClientboundCustomPayloadPacket` y `ServerboundCustomPayloadPacket`.
+**Description:** Exponer en `redox-mc-api` funciones para registrar canales y enviar/recibir mensajes tipados: `NetworkChannel::register("testmod:data").on_receive(...)`. Conectar el envío bidireccional mediante `ClientboundCustomPayloadPacket` y `ServerboundCustomPayloadPacket`.
 
 **Acceptance criteria:**
 - [ ] Envío fiable de mensajes serializados entre cliente y servidor.
@@ -547,8 +547,8 @@
 **Dependencies:** Task 6.2
 
 **Files likely touched:**
-- `rustmc-api/src/network.rs`
-- `rustmc-loader/src/network/mod.rs`
+- `redox-mc-api/src/network.rs`
+- `redox-mc-loader/src/network/mod.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
@@ -563,10 +563,10 @@
 ## Fase 7: Hot-Reloading Seguro y Experiencia de Desarrollo
 
 ### Task 7.1: Hot-Reloading Seguro mediante Copia Temporal y Swap Atómico
-**Description:** Implementar en `rustmc-loader` el patrón de recarga segura: ante una recompilación del mod, copiar el binario a un archivo temporal (`mod_cache/mod_<timestamp>.so` o `.dll`), cargarlo con `libloading` y actualizar atómicamente la tabla de callbacks en memoria (`ArcSwap`). Omitir deliberadamente `dlclose` sobre la versión anterior para evitar crashes por destructores de thread-locals de Rust, closures colgantes y bloqueos de archivo en Windows (usando el soporte Windows de la Tarea 4.4).
+**Description:** Implementar en `redox-mc-loader` el patrón de recarga segura: ante una recompilación del mod, copiar el binario a un archivo temporal (`mod_cache/mod_<timestamp>.so` o `.dll`), cargarlo con `libloading` y actualizar atómicamente la tabla de callbacks en memoria (`ArcSwap`). Omitir deliberadamente `dlclose` sobre la versión anterior para evitar crashes por destructores de thread-locals de Rust, closures colgantes y bloqueos de archivo en Windows (usando el soporte Windows de la Tarea 4.4).
 
 **Acceptance criteria:**
-- [ ] Recompilar un mod y ejecutar `/rustmc reload`: la nueva lógica toma efecto sin reiniciar la JVM ni desconectar clientes.
+- [ ] Recompilar un mod y ejecutar `/redox reload`: la nueva lógica toma efecto sin reiniciar la JVM ni desconectar clientes.
 - [ ] No se producen crashes al llamar callbacks tras la recarga.
 - [ ] En Windows, el binario del proyecto original no queda bloqueado por el proceso de la JVM.
 
@@ -576,31 +576,31 @@
 **Dependencies:** Task 6.3, Task 1.6, Task 4.4
 
 **Files likely touched:**
-- `rustmc-loader/src/reload.rs`
-- `rustmc-loader/src/dispatcher.rs`
+- `redox-mc-loader/src/reload.rs`
+- `redox-mc-loader/src/dispatcher.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
-### Task 7.2: Herramienta CLI (`cargo-rustmc`)
-**Description:** Crear el binario `cargo-rustmc` para automatizar el ciclo de desarrollo: `cargo rustmc new <mod>`, `cargo rustmc build` y `cargo rustmc run` (con soporte para lanzar servidor headless rápido o cliente con el agente inyectado).
+### Task 7.2: Herramienta CLI (`cargo-redox-mc`)
+**Description:** Crear el binario `cargo-redox-mc` para automatizar el ciclo de desarrollo: `cargo redox-mc new <mod>`, `cargo redox-mc build` y `cargo redox-mc run` (con soporte para lanzar servidor headless rápido o cliente con el agente inyectado).
 
 **Acceptance criteria:**
 - [ ] Genera proyectos de mods con estructura estándar, `mod.toml` y configuración `cdylib`.
-- [ ] `cargo rustmc run --server` lanza el entorno de pruebas local en un solo comando.
+- [ ] `cargo redox-mc run --server` lanza el entorno de pruebas local en un solo comando.
 
 **Verification:**
-- [ ] Build succeeds: `cargo install --path cargo-rustmc`
-- [ ] Manual check: Crear y arrancar un mod nuevo utilizando exclusivamente `cargo-rustmc`.
+- [ ] Build succeeds: `cargo install --path cargo-redox-mc`
+- [ ] Manual check: Crear y arrancar un mod nuevo utilizando exclusivamente `cargo-redox-mc`.
 
 **Dependencies:** Task 7.1
 
 **Files likely touched:**
-- `cargo-rustmc/Cargo.toml`
-- `cargo-rustmc/src/main.rs`
-- `cargo-rustmc/src/commands/build.rs`
-- `cargo-rustmc/src/commands/run.rs`
+- `cargo-redox-mc/Cargo.toml`
+- `cargo-redox-mc/src/main.rs`
+- `cargo-redox-mc/src/commands/build.rs`
+- `cargo-redox-mc/src/commands/run.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
@@ -608,8 +608,8 @@
 
 ## Fase 8: Block Entities y Pantallas/GUIs
 
-### Task 8.1: Clase Puente `GenericRustBlockEntity`
-**Description:** Implementar en `rustmc-bridge-game` la clase `GenericRustBlockEntity extends BlockEntity` y registrar su tipo en `BuiltInRegistries.BLOCK_ENTITY_TYPE`. Conectar la serialización y deserialización de NBT (`saveAdditional`, `loadAdditional`) y el ticker (`BlockEntityTicker`) con callbacks nativos en Rust.
+### Task 8.1: Clase Puente `GenericRedoxBlockEntity`
+**Description:** Implementar en `redox-mc-bridge-game` la clase `GenericRedoxBlockEntity extends BlockEntity` y registrar su tipo en `BuiltInRegistries.BLOCK_ENTITY_TYPE`. Conectar la serialización y deserialización de NBT (`saveAdditional`, `loadAdditional`) y el ticker (`BlockEntityTicker`) con callbacks nativos en Rust.
 
 **Acceptance criteria:**
 - [ ] Los datos NBT escritos por el mod en Rust persisten tras guardar y recargar el mundo.
@@ -621,15 +621,15 @@
 **Dependencies:** Task 5.2
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/block/GenericRustBlockEntity.java`
-- `rustmc-loader/src/registry/block_entity.rs`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/block/GenericRedoxBlockEntity.java`
+- `redox-mc-loader/src/registry/block_entity.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
 ---
 
 ### Task 8.2: Menús de Contenedor y Pantallas en Cliente
-**Description:** Implementar `GenericRustMenu extends AbstractContainerMenu` en `rustmc-bridge-game` y su tipo en `BuiltInRegistries.MENU`. Implementar la pantalla correspondiente en `rustmc-bridge-client`. Conectar la apertura del menú y eventos de clics en slots con callbacks en Rust.
+**Description:** Implementar `GenericRedoxMenu extends AbstractContainerMenu` en `redox-mc-bridge-game` y su tipo en `BuiltInRegistries.MENU`. Implementar la pantalla correspondiente en `redox-mc-bridge-client`. Conectar la apertura del menú y eventos de clics en slots con callbacks en Rust.
 
 **Acceptance criteria:**
 - [ ] Al interactuar con el bloque, se abre la interfaz con slots sincronizados entre cliente y servidor.
@@ -642,9 +642,9 @@
 **Dependencies:** Task 8.1, Task 6.3
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/gui/GenericRustMenu.java`
-- `rustmc-bridge/bridge-client/src/main/java/net/rustmc/bridge/gui/GenericRustScreen.java`
-- `rustmc-api/src/gui.rs`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/gui/GenericRedoxMenu.java`
+- `redox-mc-bridge/bridge-client/src/main/java/net/redoxmc/bridge/gui/GenericRedoxScreen.java`
+- `redox-mc-api/src/gui.rs`
 
 **Estimated scope:** Large | **Effort:** L (3-5 días)
 
@@ -653,7 +653,7 @@
 ## Fase 9: Subsistema de Entidades (Servidor y Renderpearl)
 
 ### Task 9.1: Entidades en Servidor (Bridge, Atributos e IA)
-**Description:** Implementar `GenericRustMob extends PathfinderMob` en `rustmc-bridge-game`. Registrar en `BuiltInRegistries.ENTITY_TYPE`, inyectar sus atributos en `DefaultAttributes.SUPPLIERS` y reenviar `registerGoals()` a Rust para registrar metas en el `GoalSelector`.
+**Description:** Implementar `GenericRedoxMob extends PathfinderMob` en `redox-mc-bridge-game`. Registrar en `BuiltInRegistries.ENTITY_TYPE`, inyectar sus atributos en `DefaultAttributes.SUPPLIERS` y reenviar `registerGoals()` a Rust para registrar metas en el `GoalSelector`.
 
 **Acceptance criteria:**
 - [ ] `DefaultAttributes.validate()` pasa sin error para la entidad registrada.
@@ -666,15 +666,15 @@
 **Dependencies:** Task 8.1, Task 3.1
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-game/src/main/java/net/rustmc/bridge/entity/GenericRustMob.java`
-- `rustmc-loader/src/registry/entity.rs`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/entity/GenericRedoxMob.java`
+- `redox-mc-loader/src/registry/entity.rs`
 
 **Estimated scope:** Large | **Effort:** L (3-5 días)
 
 ---
 
 ### Task 9.2: Pipeline de Renderizado en Renderpearl para Cliente
-**Description:** Implementar en `rustmc-bridge-client` la clase `GenericRustEntityRenderer extends EntityRenderer` y registrarla en `EntityRenderers.PROVIDERS`. Implementar la extracción de estado en `createRenderState` y la sumisión de geometría cúbica/jerárquica en `submit()` mediante `SubmitNodeCollector` del nuevo subsistema gráfico Renderpearl de MC 26.3.
+**Description:** Implementar en `redox-mc-bridge-client` la clase `GenericRedoxEntityRenderer extends EntityRenderer` y registrarla en `EntityRenderers.PROVIDERS`. Implementar la extracción de estado en `createRenderState` y la sumisión de geometría cúbica/jerárquica en `submit()` mediante `SubmitNodeCollector` del nuevo subsistema gráfico Renderpearl de MC 26.3.
 
 **Acceptance criteria:**
 - [ ] `EntityRenderers.validateRegistrations()` confirma que la entidad tiene renderer registrado en el cliente.
@@ -687,8 +687,8 @@
 **Dependencies:** Task 9.1, Task 5.1
 
 **Files likely touched:**
-- `rustmc-bridge/bridge-client/src/main/java/net/rustmc/bridge/entity/GenericRustEntityRenderer.java`
-- `rustmc-bridge/bridge-client/src/main/java/net/rustmc/bridge/entity/GenericRustEntityRenderState.java`
+- `redox-mc-bridge/bridge-client/src/main/java/net/redoxmc/bridge/entity/GenericRedoxEntityRenderer.java`
+- `redox-mc-bridge/bridge-client/src/main/java/net/redoxmc/bridge/entity/GenericRedoxEntityRenderState.java`
 
 **Estimated scope:** Extra Large | **Effort:** XL (5-8 días)
 
@@ -703,10 +703,10 @@
 ## Fase 10: Multi-Plataforma, Distribución y Capa Adaptadora Multi-Versión
 
 ### Task 10.1: Generalización de la Capa Adaptadora Multi-Versión
-**Description:** Generalizar la abstracción de adaptadores basada en el diseño de `rustmc-adapter-26-3`. El loader principal y la API pública interactúan exclusivamente a través de interfaces y traits agnósticos de versión.
+**Description:** Generalizar la abstracción de adaptadores basada en el diseño de `redox-mc-adapter-26-3`. El loader principal y la API pública interactúan exclusivamente a través de interfaces y traits agnósticos de versión.
 
 **Acceptance criteria:**
-- [ ] `rustmc-loader` y `rustmc-api` no contienen identificadores de clases ni firmas de 26.3 codificadas en duro fuera del adaptador.
+- [ ] `redox-mc-loader` y `redox-mc-api` no contienen identificadores de clases ni firmas de 26.3 codificadas en duro fuera del adaptador.
 - [ ] Soporte para versiones futuras requerirá únicamente implementar un nuevo crate adaptador sin reescribir el loader.
 
 **Verification:**
@@ -715,8 +715,8 @@
 **Dependencies:** Task 1.3, Task 9.2
 
 **Files likely touched:**
-- `rustmc-adapter-26-3/src/lib.rs`
-- `rustmc-loader/src/adapter.rs`
+- `redox-mc-adapter-26-3/src/lib.rs`
+- `redox-mc-loader/src/adapter.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
@@ -725,7 +725,7 @@
 ### Task 10.2: Empaquetado y Distribución para el Usuario Final
 **Description:** Diseñar la estrategia de instalación y ejecución para el jugador final en cliente y servidor:
 - En cliente: compatibilidad con lanzadores (Prism, Modrinth, CurseForge y lanzador oficial mediante perfiles JSON que añadan `-agentpath` en JVM arguments).
-- En servidor: script de arranque `run.sh`/`run.bat` que invoca `java -agentpath:librustmc_loader.so -jar server.jar nogui`.
+- En servidor: script de arranque `run.sh`/`run.bat` que invoca `java -agentpath:libredox_mc_loader.so -jar server.jar nogui`.
 - Creación automática de la carpeta `mods/` y documentación para instalación de binarios nativos.
 
 **Acceptance criteria:**
@@ -742,7 +742,7 @@
 - `distribution/launcher-profile.json`
 - `distribution/server-run.sh`
 - `distribution/README.md`
-- `rustmc-loader/src/fs.rs`
+- `redox-mc-loader/src/fs.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 
@@ -762,7 +762,7 @@
 
 **Files likely touched:**
 - `.github/workflows/ci.yml`
-- `rustmc-loader/build.rs`
+- `redox-mc-loader/build.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
 

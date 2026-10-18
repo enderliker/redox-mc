@@ -1,0 +1,9 @@
+[package]
+name = "redox-mc-adapter-26-3"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+redox-mc-adapter-api = { path = "../redox-mc-adapter-api" }
+
+

@@ -1,0 +1,19 @@
+[package]
+name = "redox-mc-loader"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "redox_mc_loader"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jvmti-bindings = "3.0.2"
+redox-mc-adapter-api = { path = "../redox-mc-adapter-api" }
+redox-mc-adapter-26-3 = { path = "../redox-mc-adapter-26-3", optional = true }
+
+[features]
+default = ["mc-26-3"]
+mc-26-3 = ["dep:redox-mc-adapter-26-3"]
+
+

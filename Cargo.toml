@@ -1,7 +1,9 @@
 [workspace]
 members = [
-    "rustmc-adapter-api",
-    "rustmc-adapter-26-3",
-    "rustmc-loader",
+    "redox-mc-adapter-api",
+    "redox-mc-adapter-26-3",
+    "redox-mc-loader",
 ]
 resolver = "2"
+
+

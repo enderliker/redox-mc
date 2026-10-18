@@ -1,6 +1,6 @@
 # Build artifacts
 target/
-rustmc-bridge/build/
+redox-mc-bridge/build/
 *.class
 *.jar
 
@@ -15,8 +15,10 @@ assets/
 data/
 
 # Runtime caches and temporary directories
-.rustmc/
+.redox-mc/
+.redoxmc/
 mod_cache/
+
 logs/
 *.log
 hs_err_pid*.log

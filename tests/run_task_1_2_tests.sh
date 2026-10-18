@@ -5,21 +5,38 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 case "$(uname -s)" in
     CYGWIN*|MINGW*|MSYS*)
-        AGENT_LIB="${ROOT_DIR}/target/debug/redox_mc_loader.dll"
-        MOD_LIB="${ROOT_DIR}/target/debug/test_mod.dll"
+        AGENT_LIB_BASENAME="redox_mc_loader.dll"
+        MOD_LIB_BASENAME="test_mod.dll"
         CP_SEP=";"
         ;;
     Darwin*)
-        AGENT_LIB="${ROOT_DIR}/target/debug/libredox_mc_loader.dylib"
-        MOD_LIB="${ROOT_DIR}/target/debug/libtest_mod.dylib"
+        AGENT_LIB_BASENAME="libredox_mc_loader.dylib"
+        MOD_LIB_BASENAME="libtest_mod.dylib"
         CP_SEP=":"
         ;;
     *)
-        AGENT_LIB="${ROOT_DIR}/target/debug/libredox_mc_loader.so"
-        MOD_LIB="${ROOT_DIR}/target/debug/libtest_mod.so"
+        AGENT_LIB_BASENAME="libredox_mc_loader.so"
+        MOD_LIB_BASENAME="libtest_mod.so"
         CP_SEP=":"
         ;;
 esac
+
+find_library() {
+    local base_name="$1"
+    for cand in \
+        "${ROOT_DIR}/target/debug/${base_name}" \
+        "${ROOT_DIR}/target/debug/lib${base_name}" \
+        "${ROOT_DIR}/target/x86_64-pc-windows-msvc/debug/${base_name}" \
+        "${ROOT_DIR}/target/x86_64-pc-windows-msvc/debug/lib${base_name}" \
+        "${ROOT_DIR}/target/x86_64-unknown-linux-gnu/debug/${base_name}" \
+        "${ROOT_DIR}/target/aarch64-apple-darwin/debug/${base_name}"; do
+        if [ -f "${cand}" ]; then
+            echo "${cand}"
+            return 0
+        fi
+    done
+    echo "${ROOT_DIR}/target/debug/${base_name}"
+}
 
 to_native_path() {
     if command -v cygpath >/dev/null 2>&1; then
@@ -33,6 +50,9 @@ echo "=== Building redox-mc-bridge and compiling agent ==="
 "${ROOT_DIR}/redox-mc-bridge/build.sh"
 cargo build -p redox-mc-loader
 cargo build -p test-mod
+
+AGENT_LIB=$(find_library "${AGENT_LIB_BASENAME}")
+MOD_LIB=$(find_library "${MOD_LIB_BASENAME}")
 
 if [ ! -f "${AGENT_LIB}" ]; then
     echo "ERROR: Agent shared library not found at ${AGENT_LIB}"
@@ -84,7 +104,7 @@ INIT_TEST_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_init')
 cd "${INIT_TEST_DIR}"
 INIT_OUTPUT=$(java -agentpath:"${AGENT_PATH_NATIVE}" -jar "${BUNDLER_PATH_NATIVE}" --initSettings 2>&1)
 cd "${ROOT_DIR}"
-rm -rf "${INIT_TEST_DIR}"
+rm -rf "${INIT_TEST_DIR}" 2>/dev/null || true
 
 echo "${INIT_OUTPUT}" | grep "Successfully transformed class 'net/minecraft/server/Bootstrap'"
 echo "${INIT_OUTPUT}" | grep "Native RedoxBridge.onBootstrapEntry() invoked from Bootstrap.bootStrap()."
@@ -102,7 +122,7 @@ cp "${MOD_LIB}" "${SLICE_TEST_DIR}/mods/test_mod/"
 cd "${SLICE_TEST_DIR}"
 MOD_SERVER_OUTPUT=$(java -agentpath:"${AGENT_PATH_NATIVE}" -jar "${BUNDLER_PATH_NATIVE}" --initSettings 2>&1)
 cd "${ROOT_DIR}"
-rm -rf "${SLICE_TEST_DIR}"
+rm -rf "${SLICE_TEST_DIR}" 2>/dev/null || true
 
 echo "${MOD_SERVER_OUTPUT}" | grep "Scanning for native mods in:"
 echo "${MOD_SERVER_OUTPUT}" | grep "Resolved deterministic load order for 1 mod(s):"

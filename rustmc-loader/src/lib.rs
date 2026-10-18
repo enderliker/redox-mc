@@ -1,3 +1,4 @@
+pub mod adapter;
 pub mod bridge_jni;
 pub mod class_injector;
 
@@ -58,7 +59,18 @@ pub struct RustmcAgent;
 impl Agent for RustmcAgent {
     fn on_load(&self, context: AgentLoadContext<'_>) -> jni::jint {
         println!("[rustmc-loader] ==================================================");
-        println!("[rustmc-loader] RustMC Native Mod Loader for Minecraft Java 26.3");
+        println!("[rustmc-loader] RustMC Native Mod Loader for Minecraft Java");
+        let adapter = adapter::active_adapter();
+        println!(
+            "[rustmc-loader] Active Version Adapter: Minecraft {} (Protocol {}, Classfile {})",
+            adapter.version_id(),
+            adapter.protocol_version(),
+            adapter.classfile_version()
+        );
+        println!(
+            "[rustmc-loader] Registered {} hook targets from adapter table.",
+            adapter.hook_targets().len()
+        );
         println!("[rustmc-loader] JVMTI Agent initialized successfully.");
         println!("[rustmc-loader] ==================================================");
 
@@ -115,10 +127,14 @@ impl Agent for RustmcAgent {
             return;
         };
 
-        if signature == "Lnet/minecraft/server/Main;" {
+        let target_sig = format!("L{};", adapter::active_adapter().server_main_class());
+        if signature == target_sig {
             if let Some(jni) = context.jni() {
                 unsafe {
-                    println!("[rustmc-loader] net/minecraft/server/Main prepared. Verifying real Minecraft subclass in game classloader...");
+                    println!(
+                        "[rustmc-loader] {} prepared. Verifying real Minecraft subclass in game classloader...",
+                        adapter::active_adapter().server_main_class()
+                    );
                     if let Err(e) = class_injector::verify_real_minecraft_subclass(jni.raw()) {
                         eprintln!("[rustmc-loader] ERROR in verify_real_minecraft_subclass: {}", e);
                     }

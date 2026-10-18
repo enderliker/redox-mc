@@ -8,3 +8,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jvmti-bindings = "3.0.2"
+rustmc-adapter-api = { path = "../rustmc-adapter-api" }
+rustmc-adapter-26-3 = { path = "../rustmc-adapter-26-3", optional = true }
+
+[features]
+default = ["mc-26-3"]
+mc-26-3 = ["dep:rustmc-adapter-26-3"]

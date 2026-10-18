@@ -9,8 +9,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe66104d0666e97ebcdda2a31ef46270fdb2452637d48796f828c4f238bf5303"
 
 [[package]]
+name = "rustmc-adapter-26-3"
+version = "0.1.0"
+dependencies = [
+ "rustmc-adapter-api",
+]
+
+[[package]]
+name = "rustmc-adapter-api"
+version = "0.1.0"
+
+[[package]]
 name = "rustmc-loader"
 version = "0.1.0"
 dependencies = [
  "jvmti-bindings",
+ "rustmc-adapter-26-3",
+ "rustmc-adapter-api",
 ]

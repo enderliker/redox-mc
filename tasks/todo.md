@@ -56,13 +56,13 @@
 **Description:** Crear el crate `rustmc-adapter-26-3` que centraliza las constantes, firmas de métodos y descriptores específicos de Minecraft 26.3. Definir la tabla canónica de hooks (`HookTarget { class_name, method_name, method_desc }`) que servirá de entrada a las transformaciones de bytecode en el loader, desacoplando los nombres del motor.
 
 **Acceptance criteria:**
-- [ ] El crate expone la tabla de hooks para `Bootstrap.bootStrap()` (`()V`), `BuiltInRegistries.freeze()` (`()V`), `MinecraftServer.tickChildren` (`(Ljava/util/function/BooleanSupplier;)V`) y `ServerGamePacketListenerImpl.handleChat` (`(Lnet/minecraft/network/protocol/game/ServerboundChatPacket;)V`).
-- [ ] Métodos y traits en `rustmc-adapter-api` para consultar firmas y nombres de clases específicas de 26.3 sin exponerlas al loader principal.
-- [ ] Pruebas unitarias e integración en Rust validan que los descriptores JNI corresponden a la especificación de JVM y coinciden exactamente con el bytecode de los jars oficiales.
+- [x] El crate expone la tabla de hooks para `Bootstrap.bootStrap()` (`()V`), `BuiltInRegistries.freeze()` (`()V`), `MinecraftServer.tickChildren` (`(Ljava/util/function/BooleanSupplier;)V`) y `ServerGamePacketListenerImpl.handleChat` (`(Lnet/minecraft/network/protocol/game/ServerboundChatPacket;)V`).
+- [x] Métodos y traits en `rustmc-adapter-api` para consultar firmas y nombres de clases específicas de 26.3 sin exponerlas al loader principal.
+- [x] Pruebas unitarias e integración en Rust validan que los descriptores JNI corresponden a la especificación de JVM y coinciden exactamente con el bytecode de los jars oficiales.
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p rustmc-adapter-26-3`
-- [ ] Manual check: Detección en runtime de hooks durante el arranque del `server.jar` real (`server.jar --initSettings`).
+- [x] Tests pass: `cargo test -p rustmc-adapter-26-3`
+- [x] Manual check: Detección en runtime de hooks durante el arranque del `server.jar` real (`server.jar --initSettings`).
 
 **Dependencies:** Task 1.1
 

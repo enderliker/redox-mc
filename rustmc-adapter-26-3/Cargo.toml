@@ -1,0 +1,7 @@
+[package]
+name = "rustmc-adapter-26-3"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rustmc-adapter-api = { path = "../rustmc-adapter-api" }

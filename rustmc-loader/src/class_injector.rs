@@ -30,7 +30,10 @@ pub unsafe fn on_class_file_load(
     loader: jni::jobject,
     class_name: &str,
 ) {
-    if !class_name.starts_with("net/minecraft/") || class_name.starts_with("net/minecraft/bundler/") {
+    let adapter = crate::adapter::active_adapter();
+    let prefix = adapter.game_package_prefix();
+
+    if !class_name.starts_with(prefix) || class_name.starts_with("net/minecraft/bundler/") {
         return;
     }
 
@@ -48,8 +51,8 @@ pub unsafe fn on_class_file_load(
                     let mut first_name = FIRST_CAPTURED_CLASS.lock().unwrap();
                     *first_name = Some(class_name.to_string());
                     println!(
-                        "[rustmc-loader] Captured game classloader from first 'net/minecraft/' class: '{}'",
-                        class_name
+                        "[rustmc-loader] Captured game classloader from first '{}' class: '{}'",
+                        prefix, class_name
                     );
                 }
                 Err(_) => {
@@ -57,6 +60,14 @@ pub unsafe fn on_class_file_load(
                 }
             }
         }
+    }
+
+    // 2. Query hook table for this class (Task 1.3 minimal integration)
+    if let Some(hook) = adapter.find_hook(class_name) {
+        println!(
+            "[rustmc-loader] Detected hook target class: '{}', method: '{}', desc: '{}' -> bridge: '{}::{}'",
+            hook.class_name, hook.method_name, hook.method_desc, hook.bridge_class, hook.bridge_method
+        );
     }
 }
 

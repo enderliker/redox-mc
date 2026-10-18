@@ -286,12 +286,12 @@
 **Description:** Implementar en `redox-mc-api` un bus de eventos pub/sub tipado en Rust con prioridades de ejecución (`HIGHEST`, `NORMAL`, `LOWEST`) y soporte de cancelación (`EventResult::Allow`, `EventResult::Cancel`).
 
 **Acceptance criteria:**
-- [ ] Suscripción de callbacks con funciones o closures tipadas.
-- [ ] Orden estricto de despacho según prioridad.
-- [ ] Posibilidad de abortar eventos cancelables deteniendo la propagación hacia handlers de menor prioridad.
+- [x] Suscripción de callbacks con funciones o closures tipadas.
+- [x] Orden estricto de despacho según prioridad (`Highest` -> `Normal` -> `Lowest`).
+- [x] Posibilidad de abortar eventos cancelables deteniendo la propagación hacia handlers de menor prioridad.
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p redox-mc-api --test event_bus`
+- [x] Tests pass: `cargo test -p redox-mc-api --test event_bus` (7/7 tests aprobados).
 
 **Dependencies:** Task 2.1
 

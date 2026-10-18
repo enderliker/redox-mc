@@ -1,0 +1,8 @@
+[package]
+name = "redox-mc-abi"
+version = "0.1.0"
+edition = "2021"
+description = "C-compatible ABI, memory ownership contracts, and vtables for Redox-MC native mod loader"
+license = "MIT OR Apache-2.0"
+
+[dependencies]

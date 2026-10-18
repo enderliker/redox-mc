@@ -158,13 +158,13 @@
 **Description:** Crear el crate `redox-mc-abi` estableciendo tipos `#[repr(C)]`, vtables y punteros opacos. Implementar la regla estricta de deasignación simétrica: la memoria asignada en el loader se libera en el loader (`redox_loader_free_*`), y la asignada en el mod se libera en el mod (`redox_mod_free_*`), prohibiendo el cruce de allocators entre diferentes binarios dinámicos.
 
 **Acceptance criteria:**
-- [ ] Toda estructura que cruza la frontera de la biblioteca dinámica implementa `#[repr(C)]`.
-- [ ] Funciones de deasignación explícitas expuestas y documentadas para buffers y cadenas.
-- [ ] Pruebas unitarias de layout y alineación de memoria garantizan estabilidad binaria.
+- [x] Toda estructura que cruza la frontera de la biblioteca dinámica implementa `#[repr(C)]`.
+- [x] Funciones de deasignación explícitas expuestas y documentadas para buffers y cadenas (`redox_loader_free_*`, `redox_mod_free_*`).
+- [x] Pruebas unitarias de layout y alineación de memoria garantizan estabilidad binaria (`layout_tests.rs`).
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p redox-mc-abi`
-- [ ] Build succeeds: `cargo check -p redox-mc-abi --all-targets`
+- [x] Tests pass: `cargo test -p redox-mc-abi` (6 pruebas de layout, alineación y handshake).
+- [x] Build succeeds: `cargo check -p redox-mc-abi --all-targets`
 
 **Dependencies:** Task 1.6
 

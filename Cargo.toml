@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "redox-mc-abi",
     "redox-mc-adapter-api",
     "redox-mc-adapter-26-3",
     "redox-mc-loader",

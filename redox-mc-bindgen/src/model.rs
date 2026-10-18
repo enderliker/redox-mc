@@ -149,6 +149,12 @@ impl MethodSignature {
         let mut parameters = Vec::new();
         while !params_str.is_empty() {
             let (param, rest) = JvmType::parse(params_str)?;
+            if matches!(param, JvmType::Primitive(PrimitiveType::Void)) {
+                return Err(format!(
+                    "Void cannot be a parameter type in method descriptor: {}",
+                    desc
+                ));
+            }
             parameters.push(param);
             params_str = rest;
         }

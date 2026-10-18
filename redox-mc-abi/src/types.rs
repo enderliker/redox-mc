@@ -111,6 +111,11 @@ pub struct FfiStr {
     pub len: usize,
 }
 
+#[allow(invalid_from_utf8)]
+fn invalid_utf8_error() -> Utf8Error {
+    std::str::from_utf8(b"\xFF").unwrap_err()
+}
+
 impl FfiStr {
     pub const EMPTY: Self = Self {
         ptr: std::ptr::null(),
@@ -132,12 +137,12 @@ impl FfiStr {
     /// The caller must ensure that `ptr` points to valid memory for `len` bytes
     /// and that the lifetime matches the referenced data.
     #[inline]
-    pub unsafe fn as_str<'a>(&self) -> Result<&'a str, Utf8Error> {
+    pub unsafe fn as_str(&self) -> Result<&str, Utf8Error> {
         if self.len == 0 {
             return Ok("");
         }
         if self.ptr.is_null() {
-            return Err(std::str::from_utf8(b"").unwrap_err());
+            return Err(invalid_utf8_error());
         }
         let bytes = std::slice::from_raw_parts(self.ptr, self.len);
         std::str::from_utf8(bytes)
@@ -148,7 +153,7 @@ impl FfiStr {
     /// # Safety
     /// Same safety requirements as `as_str`.
     #[inline]
-    pub unsafe fn as_bytes<'a>(&self) -> &'a [u8] {
+    pub unsafe fn as_bytes(&self) -> &[u8] {
         if self.len == 0 || self.ptr.is_null() {
             &[]
         } else {
@@ -239,8 +244,15 @@ impl FfiString {
     /// # Safety
     /// Valid while this `FfiString` is alive and not modified.
     #[inline]
-    pub unsafe fn as_str<'a>(&self) -> Result<&'a str, Utf8Error> {
-        self.as_ffi_str().as_str()
+    pub unsafe fn as_str(&self) -> Result<&str, Utf8Error> {
+        if self.len == 0 {
+            return Ok("");
+        }
+        if self.ptr.is_null() {
+            return Err(invalid_utf8_error());
+        }
+        let bytes = std::slice::from_raw_parts(self.ptr, self.len);
+        std::str::from_utf8(bytes)
     }
 
     #[inline]
@@ -281,7 +293,7 @@ impl<T> FfiSlice<T> {
     /// # Safety
     /// `ptr` must be valid for `len` elements of type `T`.
     #[inline]
-    pub unsafe fn as_slice<'a>(&self) -> &'a [T] {
+    pub unsafe fn as_slice(&self) -> &[T] {
         if self.len == 0 || self.ptr.is_null() {
             &[]
         } else {
@@ -319,7 +331,7 @@ impl<T> FfiSliceMut<T> {
     /// # Safety
     /// `ptr` must be valid for `len` elements of type `T`.
     #[inline]
-    pub unsafe fn as_slice_mut<'a>(&mut self) -> &'a mut [T] {
+    pub unsafe fn as_slice_mut(&mut self) -> &mut [T] {
         if self.len == 0 || self.ptr.is_null() {
             &mut []
         } else {
@@ -372,7 +384,7 @@ impl FfiBuffer {
     /// # Safety
     /// Valid while this `FfiBuffer` is alive and not modified.
     #[inline]
-    pub unsafe fn as_bytes<'a>(&self) -> &'a [u8] {
+    pub unsafe fn as_bytes(&self) -> &[u8] {
         if self.len == 0 || self.ptr.is_null() {
             &[]
         } else {
@@ -385,7 +397,7 @@ impl FfiBuffer {
     /// # Safety
     /// Valid while this `FfiBuffer` is alive and not accessed concurrently.
     #[inline]
-    pub unsafe fn as_bytes_mut<'a>(&mut self) -> &'a mut [u8] {
+    pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
         if self.len == 0 || self.ptr.is_null() {
             &mut []
         } else {

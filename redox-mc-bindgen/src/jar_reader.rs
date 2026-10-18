@@ -24,12 +24,9 @@ pub fn read_class_from_jar(
     jar_path: &Path,
     class_query: &str,
 ) -> Result<ClassModel, JarReaderError> {
-    let normalized_class = class_query
-        .trim()
-        .replace('.', "/")
-        .strip_suffix(".class")
-        .unwrap_or(&class_query.trim().replace('.', "/"))
-        .to_string();
+    let trimmed = class_query.trim();
+    let stripped = trimmed.strip_suffix(".class").unwrap_or(trimmed);
+    let normalized_class = stripped.replace('.', "/");
 
     let entry_name = format!("{}.class", normalized_class);
 
@@ -42,7 +39,10 @@ pub fn read_class_from_jar(
         let mut zip_entry = archive.by_name(&entry_name).map_err(|_| {
             JarReaderError::ClassNotFound(class_query.to_string(), jar_path.display().to_string())
         })?;
-        zip_entry.read_to_end(&mut class_bytes)?;
+        zip_entry
+            .by_ref()
+            .take(16 * 1024 * 1024)
+            .read_to_end(&mut class_bytes)?;
     }
 
     parse_class_bytes(&class_bytes)

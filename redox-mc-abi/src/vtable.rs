@@ -21,8 +21,8 @@ pub struct LoaderContext {
     /// Current environment side (Client, Server, Both).
     pub side: FfiModSide,
 
-    /// Reserved for alignment and future extension.
-    pub _reserved: [u8; 3],
+    /// Reserved for alignment and future extension (7 bytes to align vtable to 8-byte boundary).
+    pub _reserved: [u8; 7],
 
     /// Pointer to the loader's function vtable.
     pub vtable: *const LoaderVTable,

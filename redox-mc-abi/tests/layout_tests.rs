@@ -199,7 +199,7 @@ fn test_mock_loader_and_mod_handshake() {
         loader_version_minor: 1,
         loader_version_patch: 0,
         side: FfiModSide::Server,
-        _reserved: [0; 3],
+        _reserved: [0; 7],
         vtable: &loader_vtable,
         loader_handle: std::ptr::null_mut(),
     };

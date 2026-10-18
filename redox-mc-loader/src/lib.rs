@@ -28,12 +28,17 @@ fn extract_and_inject_bridge_core(jvmti: &Jvmti) -> bool {
         .join(".redox-mc")
         .join("cache");
 
-    let target_jar = match std::fs::create_dir_all(&primary_dir) {
-        Ok(_) => primary_dir.join("bridge-core.jar"),
-        Err(_) => std::env::temp_dir()
-            .join("redoxmc_cache")
-            .join("bridge-core.jar"),
+    let target_dir = match std::fs::create_dir_all(&primary_dir) {
+        Ok(_) => primary_dir,
+        Err(_) => {
+            let unique_temp =
+                std::env::temp_dir().join(format!("redoxmc_cache_{}", std::process::id()));
+            let _ = std::fs::create_dir_all(&unique_temp);
+            unique_temp
+        }
     };
+
+    let target_jar = target_dir.join("bridge-core.jar");
 
     if let Some(parent) = target_jar.parent() {
         let _ = std::fs::create_dir_all(parent);

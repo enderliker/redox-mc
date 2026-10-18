@@ -26,10 +26,9 @@ static JVM_PROCESS_LOCK: Mutex<()> = Mutex::new(());
 pub struct JvmHost {
     _lib: Library,
     vm: *mut jni::JavaVM,
-    env: *mut jni::JNIEnv,
 }
 
-// Safety: JvmHost manages pointers to JVM which can be attached per-thread.
+// Safety: JavaVM pointer is thread-safe across threads per JNI specification.
 unsafe impl Send for JvmHost {}
 unsafe impl Sync for JvmHost {}
 
@@ -55,16 +54,10 @@ impl JvmHost {
                 let mut n_vms: jni::jsize = 0;
                 let res = get_vms(&mut vm_ptr, 1, &mut n_vms);
                 if res == jni::JNI_OK && n_vms > 0 && !vm_ptr.is_null() {
-                    // JVM already exists; attach the current thread
-                    let attach_res =
-                        ((**vm_ptr).AttachCurrentThread)(vm_ptr, &mut env_ptr, ptr::null_mut());
-                    if attach_res == jni::JNI_OK && !env_ptr.is_null() {
-                        return Ok(Self {
-                            _lib: lib,
-                            vm: vm_ptr,
-                            env: env_ptr as *mut jni::JNIEnv,
-                        });
-                    }
+                    return Ok(Self {
+                        _lib: lib,
+                        vm: vm_ptr,
+                    });
                 }
             }
 
@@ -95,21 +88,32 @@ impl JvmHost {
             };
 
             let res = create_vm(&mut vm_ptr, &mut env_ptr, &mut args);
-            if res != jni::JNI_OK || vm_ptr.is_null() || env_ptr.is_null() {
+            if res != jni::JNI_OK || vm_ptr.is_null() {
                 return Err(format!("JNI_CreateJavaVM failed with error code {}", res));
             }
 
             Ok(Self {
                 _lib: lib,
                 vm: vm_ptr,
-                env: env_ptr as *mut jni::JNIEnv,
             })
         }
     }
 
-    /// Returns the raw JNIEnv pointer for the current thread.
+    /// Returns the thread-local JNIEnv pointer for the calling thread.
     pub unsafe fn env(&self) -> *mut jni::JNIEnv {
-        self.env
+        let mut env_ptr: *mut c_void = ptr::null_mut();
+        let res = ((**self.vm).GetEnv)(self.vm, &mut env_ptr, jni::JNI_VERSION_1_8);
+        if res == jni::JNI_OK && !env_ptr.is_null() {
+            return env_ptr as *mut jni::JNIEnv;
+        }
+        let attach_res = ((**self.vm).AttachCurrentThread)(self.vm, &mut env_ptr, ptr::null_mut());
+        if attach_res == jni::JNI_OK && !env_ptr.is_null() {
+            return env_ptr as *mut jni::JNIEnv;
+        }
+        panic!(
+            "Failed to acquire thread-local JNIEnv from JavaVM (GetEnv: {}, AttachCurrentThread: {})",
+            res, attach_res
+        );
     }
 
     /// Returns the raw JavaVM pointer.

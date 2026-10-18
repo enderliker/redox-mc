@@ -5,7 +5,8 @@
     non_upper_case_globals,
     unused_imports,
     unused_variables,
-    dead_code
+    dead_code,
+    clippy::all
 )]
 
 use jvmti_bindings::sys::jni;
@@ -36,17 +37,32 @@ impl ResourceKey {
     /// Returns the cached jclass (as a JNI GlobalRef) for this class.
     pub unsafe fn get_class(env: *mut jni::JNIEnv) -> jni::jclass {
         static CLASS_REF: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
-        let mut cls = CLASS_REF.load(Ordering::Relaxed) as jni::jclass;
-        if cls.is_null() {
-            let class_name_c = c"net/minecraft/resources/ResourceKey";
-            let local_cls = ((**env).FindClass)(env, class_name_c.as_ptr());
-            if !local_cls.is_null() {
-                cls = ((**env).NewGlobalRef)(env, local_cls) as jni::jclass;
-                CLASS_REF.store(cls as *mut std::ffi::c_void, Ordering::Release);
-                ((**env).DeleteLocalRef)(env, local_cls);
+        let cls = CLASS_REF.load(Ordering::Acquire) as jni::jclass;
+        if !cls.is_null() {
+            return cls;
+        }
+        let class_name_c = c"net/minecraft/resources/ResourceKey";
+        let local_cls = ((**env).FindClass)(env, class_name_c.as_ptr());
+        if local_cls.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return std::ptr::null_mut();
+        }
+        let new_global = ((**env).NewGlobalRef)(env, local_cls) as jni::jclass;
+        ((**env).DeleteLocalRef)(env, local_cls);
+        match CLASS_REF.compare_exchange(
+            std::ptr::null_mut(),
+            new_global as *mut std::ffi::c_void,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => new_global,
+            Err(existing) => {
+                ((**env).DeleteGlobalRef)(env, new_global);
+                existing as jni::jclass
             }
         }
-        cls
     }
 
     /// JNI call for `codec`: `(Lnet/minecraft/resources/ResourceKey;)Lcom/mojang/serialization/Codec;`

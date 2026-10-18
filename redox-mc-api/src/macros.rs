@@ -9,12 +9,12 @@ pub trait PanicFallback {
     fn panic_fallback() -> Self;
 }
 
-impl<T: Default> PanicFallback for FfiResult<T> {
+impl<T: PanicFallback> PanicFallback for FfiResult<T> {
     #[inline]
     fn panic_fallback() -> Self {
         Self {
             status: FfiStatus::Panic,
-            value: T::default(),
+            value: T::panic_fallback(),
         }
     }
 }
@@ -46,6 +46,21 @@ impl PanicFallback for isize {
         FfiStatus::Panic as isize
     }
 }
+
+macro_rules! impl_panic_fallback_primitive {
+    ($($ty:ty),*) => {
+        $(
+            impl PanicFallback for $ty {
+                #[inline]
+                fn panic_fallback() -> Self {
+                    Default::default()
+                }
+            }
+        )*
+    };
+}
+
+impl_panic_fallback_primitive!(u8, u16, u32, u64, usize, i8, i16, f32, f64, bool);
 
 impl PanicFallback for () {
     #[inline]
@@ -93,10 +108,12 @@ pub fn handle_panic(fn_name: &str, err: Box<dyn Any + Send>) {
         "non-string panic payload"
     };
 
-    eprintln!(
-        "[redox-mod] ERROR: Panic caught in exported function '{}': {}",
-        fn_name, msg
-    );
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        eprintln!(
+            "[redox-mod] ERROR: Panic caught in exported function '{}': {}",
+            fn_name, msg
+        );
+    }));
 }
 
 /// Declarative macro alternative to `#[redox_export]` attribute.

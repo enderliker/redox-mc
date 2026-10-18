@@ -48,53 +48,37 @@ pub unsafe fn free_local_buffer(b: FfiBuffer) {
 }
 
 // -----------------------------------------------------------------------------
-// Explicit Loader Deallocation Exports
+// Loader / Mod Deallocation Helpers (Passed via VTable function pointers)
 // -----------------------------------------------------------------------------
 
-/// Deallocates an `FfiString` allocated by the Redox loader.
-///
-/// Must be exported by `redox-mc-loader`.
+/// Deallocates an `FfiString` using the caller binary's local allocator.
 ///
 /// # Safety
-/// The caller must ensure `s` was created by `redox-mc-loader`.
-#[no_mangle]
+/// The caller must ensure `s` was created by the caller binary's allocator.
 pub unsafe extern "C" fn redox_loader_free_string(s: FfiString) {
     free_local_string(s);
 }
 
-/// Deallocates an `FfiBuffer` allocated by the Redox loader.
-///
-/// Must be exported by `redox-mc-loader`.
+/// Deallocates an `FfiBuffer` using the caller binary's local allocator.
 ///
 /// # Safety
-/// The caller must ensure `b` was created by `redox-mc-loader`.
-#[no_mangle]
+/// The caller must ensure `b` was created by the caller binary's allocator.
 pub unsafe extern "C" fn redox_loader_free_buffer(b: FfiBuffer) {
     free_local_buffer(b);
 }
 
-// -----------------------------------------------------------------------------
-// Explicit Mod Deallocation Exports
-// -----------------------------------------------------------------------------
-
-/// Deallocates an `FfiString` allocated by a mod.
-///
-/// Must be implemented/exported by each mod binary (or through `redox-mc-api`).
+/// Deallocates an `FfiString` using a mod's local allocator.
 ///
 /// # Safety
-/// The caller must ensure `s` was created by the calling mod's allocator.
-#[no_mangle]
+/// The caller must ensure `s` was created by the mod's allocator.
 pub unsafe extern "C" fn redox_mod_free_string(s: FfiString) {
     free_local_string(s);
 }
 
-/// Deallocates an `FfiBuffer` allocated by a mod.
-///
-/// Must be implemented/exported by each mod binary (or through `redox-mc-api`).
+/// Deallocates an `FfiBuffer` using a mod's local allocator.
 ///
 /// # Safety
-/// The caller must ensure `b` was created by the calling mod's allocator.
-#[no_mangle]
+/// The caller must ensure `b` was created by the mod's allocator.
 pub unsafe extern "C" fn redox_mod_free_buffer(b: FfiBuffer) {
     free_local_buffer(b);
 }

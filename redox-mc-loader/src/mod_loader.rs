@@ -180,27 +180,74 @@ impl ModManager {
             };
             let boxed_lib = Box::new(lib);
 
-            // Resolve and execute redox_mod_init
-            type InitFn = unsafe extern "C" fn() -> i32;
-            let init_symbol = unsafe { boxed_lib.get::<InitFn>(b"redox_mod_init\0") };
+            // 1. Check for modern v1 ABI entrypoint: redox_mod_init_v1 (ModInitFn)
+            let init_v1_symbol =
+                unsafe { boxed_lib.get::<redox_mc_abi::vtable::ModInitFn>(b"redox_mod_init_v1\0") };
 
-            if let Ok(init_fn) = init_symbol {
-                let code = unsafe { init_fn() };
-                if let Err(_safety_err) = crate::safety::check_ffi_code(&manifest.id, code) {
-                    return Err(ModLoaderError::InitFailed(manifest.id.clone(), code));
+            let mut vtable_opt: Option<&'static redox_mc_abi::vtable::ModVTable> = None;
+
+            if let Ok(init_v1_fn) = init_v1_symbol {
+                static LOADER_VTABLE: redox_mc_abi::vtable::LoaderVTable =
+                    redox_mc_abi::vtable::LoaderVTable {
+                        log: default_loader_log,
+                        register_event_listener: default_register_event_listener,
+                        free_string: redox_mc_abi::memory::redox_loader_free_string,
+                        free_buffer: redox_mc_abi::memory::redox_loader_free_buffer,
+                    };
+
+                let context = redox_mc_abi::vtable::LoaderContext {
+                    abi_version: redox_mc_abi::REDOX_ABI_VERSION,
+                    loader_version_major: 0,
+                    loader_version_minor: 1,
+                    loader_version_patch: 0,
+                    side: redox_mc_abi::types::FfiModSide::Server,
+                    _reserved: [0; 7],
+                    vtable: &LOADER_VTABLE,
+                    loader_handle: std::ptr::null_mut(),
+                };
+
+                let res = unsafe { init_v1_fn(&context) };
+                if let Err(_safety_err) = crate::safety::check_ffi_result(&manifest.id, res) {
+                    return Err(ModLoaderError::InitFailed(
+                        manifest.id.clone(),
+                        res.status as i32,
+                    ));
+                }
+
+                if res.is_ok() && !res.value.is_null() {
+                    let vtable_ref = unsafe { &*res.value };
+                    vtable_opt = Some(vtable_ref);
                 }
             } else {
-                println!(
-                    "[redox-mc-loader] Mod '{}' has no 'redox_mod_init' symbol. Proceeding.",
-                    manifest.id
-                );
+                // 2. Fallback to Phase 1 redox_mod_init() -> i32
+                type InitFn = unsafe extern "C" fn() -> i32;
+                let init_symbol = unsafe { boxed_lib.get::<InitFn>(b"redox_mod_init\0") };
+
+                if let Ok(init_fn) = init_symbol {
+                    let code = unsafe { init_fn() };
+                    if let Err(_safety_err) = crate::safety::check_ffi_code(&manifest.id, code) {
+                        return Err(ModLoaderError::InitFailed(manifest.id.clone(), code));
+                    }
+                } else {
+                    println!(
+                        "[redox-mc-loader] Mod '{}' has no 'redox_mod_init' or 'redox_mod_init_v1' symbol. Proceeding.",
+                        manifest.id
+                    );
+                }
             }
 
-            // Resolve optional redox_mod_on_bootstrap
-            type BootstrapFn = unsafe extern "C" fn();
-            let bootstrap_symbol =
-                unsafe { boxed_lib.get::<BootstrapFn>(b"redox_mod_on_bootstrap\0") };
-            let on_bootstrap_fn = bootstrap_symbol.ok().map(|s| *s);
+            // Resolve bootstrap callback (from vtable or explicit symbol)
+            let on_bootstrap_fn = if let Some(vtable) = vtable_opt {
+                vtable.on_bootstrap.map(|f| {
+                    let raw_fn: unsafe extern "C" fn() = unsafe { std::mem::transmute(f) };
+                    raw_fn
+                })
+            } else {
+                type BootstrapFn = unsafe extern "C" fn();
+                let bootstrap_symbol =
+                    unsafe { boxed_lib.get::<BootstrapFn>(b"redox_mod_on_bootstrap\0") };
+                bootstrap_symbol.ok().map(|s| *s)
+            };
 
             self.loaded_mods.push(LoadedMod {
                 manifest,
@@ -249,6 +296,24 @@ impl Default for ModManager {
     }
 }
 
+unsafe extern "C" fn default_loader_log(
+    level: redox_mc_abi::types::FfiLogLevel,
+    target: redox_mc_abi::types::FfiStr,
+    msg: redox_mc_abi::types::FfiStr,
+) {
+    let t_str = unsafe { target.as_str().unwrap_or("unknown") };
+    let m_str = unsafe { msg.as_str().unwrap_or("") };
+    println!("[{}] [{:?}] {}", t_str, level, m_str);
+}
+
+unsafe extern "C" fn default_register_event_listener(
+    _event_id: u32,
+    _callback: unsafe extern "C" fn(*const ()),
+    _user_data: *mut (),
+) -> redox_mc_abi::types::FfiStatus {
+    redox_mc_abi::types::FfiStatus::Success
+}
+
 // Global ModManager instance
 static MOD_MANAGER: Mutex<Option<ModManager>> = Mutex::new(None);
 
@@ -258,27 +323,55 @@ pub fn get_or_init_manager() -> &'static Mutex<Option<ModManager>> {
 
 /// Called from RedoxBridge.onBootstrapEntry()
 pub fn on_bootstrap_entry() {
-    let mut guard = MOD_MANAGER.lock().unwrap();
-    let manager = guard.get_or_insert_with(ModManager::new);
+    {
+        let mut guard = MOD_MANAGER.lock().unwrap();
+        let manager = guard.get_or_insert_with(ModManager::new);
 
-    if !manager.initialized {
-        let mods_dir = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join("mods");
+        if !manager.initialized {
+            let mods_dir = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("mods");
 
-        let loader_ver =
-            Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 1, 0));
-        let running_side = ModSide::Server; // Bootstrap on dedicated server
+            let loader_ver =
+                Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 1, 0));
+            let running_side = ModSide::Server; // Bootstrap on dedicated server
 
-        if let Err(err) = manager.load_mods(&mods_dir, running_side, &loader_ver) {
-            eprintln!(
-                "[redox-mc-loader] ERROR: Failed during mod loading: {}",
-                err
-            );
+            if let Err(err) = manager.load_mods(&mods_dir, running_side, &loader_ver) {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Failed during mod loading: {}",
+                    err
+                );
+            }
         }
     }
 
-    manager.dispatch_bootstrap();
+    // Call dispatch outside the mutex lock to prevent deadlock if mod invokes loader API
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .map(|m| (m.manifest.id.clone(), m.on_bootstrap_fn))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    if !callbacks.is_empty() {
+        println!(
+            "[redox-mc-loader] Dispatching Bootstrap.bootStrap() hook to {} loaded mod(s)...",
+            callbacks.len()
+        );
+        for (_id, cb) in callbacks {
+            if let Some(on_bootstrap) = cb {
+                unsafe {
+                    on_bootstrap();
+                }
+            }
+        }
+    }
 }
 
 fn find_binary_in_dir(dir: &Path) -> Option<PathBuf> {

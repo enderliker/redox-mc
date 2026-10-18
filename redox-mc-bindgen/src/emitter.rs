@@ -52,16 +52,41 @@ pub fn to_snake_case(s: &str) -> String {
 
 pub fn escape_rust_keyword(s: &str) -> String {
     match s {
-        "as" | "break" | "const" | "continue" | "crate" | "else" | "enum" | "extern" | "false"
-        | "fn" | "for" | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod" | "move"
-        | "mut" | "pub" | "ref" | "return" | "static" | "struct" | "super" | "trait" | "true"
-        | "type" | "unsafe" | "use" | "where" | "while" | "async" | "await" | "dyn" | "yield" => {
+        "as" | "break" | "const" | "continue" | "else" | "enum" | "extern" | "false" | "fn"
+        | "for" | "if" | "impl" | "in" | "let" | "loop" | "match" | "mod" | "move" | "mut"
+        | "pub" | "ref" | "return" | "static" | "struct" | "trait" | "true" | "type" | "unsafe"
+        | "use" | "where" | "while" | "async" | "await" | "dyn" | "yield" | "try" => {
             format!("r#{}", s)
         }
+        "crate" => "crate_val".to_string(),
+        "super" => "super_val".to_string(),
         "self" => "self_val".to_string(),
         "Self" => "SelfType".to_string(),
         other => other.to_string(),
     }
+}
+
+pub fn escape_c_string_literal(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len() + 8);
+    escaped.push_str("c\"");
+    for ch in s.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\0' => escaped.push_str("\\0"),
+            c if c.is_ascii_graphic() || c == ' ' => escaped.push(c),
+            c => {
+                for b in c.to_string().as_bytes() {
+                    escaped.push_str(&format!("\\x{:02x}", b));
+                }
+            }
+        }
+    }
+    escaped.push('"');
+    escaped
 }
 
 pub fn emit_class(class: &ClassModel) -> String {
@@ -109,22 +134,37 @@ pub fn emit_class(class: &ClassModel) -> String {
     out.push_str("    /// Returns the cached jclass (as a JNI GlobalRef) for this class.\n");
     out.push_str("    pub unsafe fn get_class(env: *mut jni::JNIEnv) -> jni::jclass {\n");
     out.push_str("        static CLASS_REF: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());\n");
-    out.push_str("        let mut cls = CLASS_REF.load(Ordering::Relaxed) as jni::jclass;\n");
-    out.push_str("        if cls.is_null() {\n");
+    out.push_str("        let cls = CLASS_REF.load(Ordering::Acquire) as jni::jclass;\n");
+    out.push_str("        if !cls.is_null() {\n");
+    out.push_str("            return cls;\n");
+    out.push_str("        }\n");
     out.push_str(&format!(
-        "            let class_name_c = c\"{}\";\n",
-        class.name
+        "        let class_name_c = {};\n",
+        escape_c_string_literal(&class.name)
     ));
-    out.push_str("            let local_cls = ((**env).FindClass)(env, class_name_c.as_ptr());\n");
-    out.push_str("            if !local_cls.is_null() {\n");
-    out.push_str("                cls = ((**env).NewGlobalRef)(env, local_cls) as jni::jclass;\n");
+    out.push_str("        let local_cls = ((**env).FindClass)(env, class_name_c.as_ptr());\n");
+    out.push_str("        if local_cls.is_null() {\n");
+    out.push_str("            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {\n");
+    out.push_str("                ((**env).ExceptionClear)(env);\n");
+    out.push_str("            }\n");
+    out.push_str("            return std::ptr::null_mut();\n");
+    out.push_str("        }\n");
     out.push_str(
-        "                CLASS_REF.store(cls as *mut std::ffi::c_void, Ordering::Release);\n",
+        "        let new_global = ((**env).NewGlobalRef)(env, local_cls) as jni::jclass;\n",
     );
-    out.push_str("                ((**env).DeleteLocalRef)(env, local_cls);\n");
+    out.push_str("        ((**env).DeleteLocalRef)(env, local_cls);\n");
+    out.push_str("        match CLASS_REF.compare_exchange(\n");
+    out.push_str("            std::ptr::null_mut(),\n");
+    out.push_str("            new_global as *mut std::ffi::c_void,\n");
+    out.push_str("            Ordering::AcqRel,\n");
+    out.push_str("            Ordering::Acquire,\n");
+    out.push_str("        ) {\n");
+    out.push_str("            Ok(_) => new_global,\n");
+    out.push_str("            Err(existing) => {\n");
+    out.push_str("                ((**env).DeleteGlobalRef)(env, new_global);\n");
+    out.push_str("                existing as jni::jclass\n");
     out.push_str("            }\n");
     out.push_str("        }\n");
-    out.push_str("        cls\n");
     out.push_str("    }\n\n");
 
     // Compute unique method names
@@ -233,12 +273,12 @@ fn emit_method(out: &mut String, class: &ClassModel, method: &MethodModel, rust_
     out.push_str("            let clazz = Self::get_class(env);\n");
     out.push_str("            if !clazz.is_null() {\n");
     out.push_str(&format!(
-        "                let name = c\"{}\";\n",
-        method.name
+        "                let name = {};\n",
+        escape_c_string_literal(&method.name)
     ));
     out.push_str(&format!(
-        "                let sig = c\"{}\";\n",
-        method.descriptor
+        "                let sig = {};\n",
+        escape_c_string_literal(&method.descriptor)
     ));
 
     if is_static {
@@ -369,12 +409,12 @@ fn emit_field(
     out.push_str("            let clazz = Self::get_class(env);\n");
     out.push_str("            if !clazz.is_null() {\n");
     out.push_str(&format!(
-        "                let name = c\"{}\";\n",
-        field.name
+        "                let name = {};\n",
+        escape_c_string_literal(&field.name)
     ));
     out.push_str(&format!(
-        "                let sig = c\"{}\";\n",
-        field.descriptor
+        "                let sig = {};\n",
+        escape_c_string_literal(&field.descriptor)
     ));
 
     if is_static {

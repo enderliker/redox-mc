@@ -391,9 +391,12 @@ unsafe fn bench_complex_object(
     // Warmup
     for _ in 0..config.warmup_iterations {
         let obj = ((**env).NewObjectA)(env, class, ctor_id, ctor_args.as_ptr());
-        let _ = ((**env).CallObjectMethodA)(env, obj, append_id, append_args.as_ptr());
+        let appended = ((**env).CallObjectMethodA)(env, obj, append_id, append_args.as_ptr());
         let len = ((**env).CallIntMethod)(env, obj, len_id);
         black_box(len);
+        if !appended.is_null() {
+            ((**env).DeleteLocalRef)(env, appended);
+        }
         ((**env).DeleteLocalRef)(env, obj);
     }
 
@@ -403,9 +406,12 @@ unsafe fn bench_complex_object(
         let start = Instant::now();
         for _ in 0..config.batch_size {
             let obj = ((**env).NewObjectA)(env, class, ctor_id, ctor_args.as_ptr());
-            let _ = ((**env).CallObjectMethodA)(env, obj, append_id, append_args.as_ptr());
+            let appended = ((**env).CallObjectMethodA)(env, obj, append_id, append_args.as_ptr());
             let len = ((**env).CallIntMethod)(env, obj, len_id);
             black_box(len);
+            if !appended.is_null() {
+                ((**env).DeleteLocalRef)(env, appended);
+            }
             ((**env).DeleteLocalRef)(env, obj);
         }
         let elapsed = start.elapsed();

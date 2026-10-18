@@ -21,6 +21,14 @@ case "$(uname -s)" in
         ;;
 esac
 
+to_native_path() {
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "$1"
+    else
+        echo "$1"
+    fi
+}
+
 echo "=== Building redox-mc-bridge and compiling agent ==="
 "${ROOT_DIR}/redox-mc-bridge/build.sh"
 cargo build -p redox-mc-loader
@@ -31,16 +39,21 @@ if [ ! -f "${AGENT_LIB}" ]; then
     exit 1
 fi
 
+AGENT_PATH_NATIVE=$(to_native_path "${AGENT_LIB}")
+TEST_CLASSES_NATIVE=$(to_native_path "${ROOT_DIR}/redox-mc-bridge/build/test-classes")
+CORE_JAR_NATIVE=$(to_native_path "${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar")
+SERVER_JAR_NATIVE=$(to_native_path "${ROOT_DIR}/versions/26.3/server-26.3.jar")
+
 echo ""
 echo "=== Running Test 1: Client/Integrated Server ClassLoader Test ==="
-java -agentpath:"${AGENT_LIB}" \
-    -cp "${ROOT_DIR}/redox-mc-bridge/build/test-classes${CP_SEP}${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar${CP_SEP}${ROOT_DIR}/versions/26.3/server-26.3.jar" \
+java -agentpath:"${AGENT_PATH_NATIVE}" \
+    -cp "${TEST_CLASSES_NATIVE}${CP_SEP}${CORE_JAR_NATIVE}${CP_SEP}${SERVER_JAR_NATIVE}" \
     net.redoxmc.test.BridgeClassLoaderTest
 
 echo ""
 echo "=== Running Test 2: Bundler URLClassLoader Simulation Test ==="
-java -agentpath:"${AGENT_LIB}" \
-    -cp "${ROOT_DIR}/redox-mc-bridge/build/test-classes${CP_SEP}${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar" \
+java -agentpath:"${AGENT_PATH_NATIVE}" \
+    -cp "${TEST_CLASSES_NATIVE}${CP_SEP}${CORE_JAR_NATIVE}" \
     net.redoxmc.test.BundlerSimulationTest
 
 echo ""
@@ -57,8 +70,9 @@ if [ -z "${BUNDLER_JAR}" ] || [ ! -f "${BUNDLER_JAR}" ]; then
         BUNDLER_JAR="${ROOT_DIR}/versions/26.3/server.jar"
     fi
 fi
+BUNDLER_PATH_NATIVE=$(to_native_path "${BUNDLER_JAR}")
 echo "[test] Using bundler jar: ${BUNDLER_JAR}"
-SERVER_OUTPUT=$(java -agentpath:"${AGENT_LIB}" -jar "${BUNDLER_JAR}" --help 2>&1)
+SERVER_OUTPUT=$(java -agentpath:"${AGENT_PATH_NATIVE}" -jar "${BUNDLER_PATH_NATIVE}" --help 2>&1)
 echo "${SERVER_OUTPUT}" | grep "Successfully bound native methods to net.redoxmc.bridge.RedoxBridge via RegisterNatives."
 echo "${SERVER_OUTPUT}" | grep "Captured game classloader from first 'net/minecraft/' class: 'net/minecraft/server/Main'"
 echo "${SERVER_OUTPUT}" | grep "SUCCESS: TestMinecraftSavedData instantiated: net.redoxmc.bridge.game.TestMinecraftSavedData"
@@ -68,7 +82,7 @@ echo ""
 echo "=== Running Test 4: Task 1.4 Bytecode Wrapper Hook Execution (--initSettings) ==="
 INIT_TEST_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_init')
 cd "${INIT_TEST_DIR}"
-INIT_OUTPUT=$(java -agentpath:"${AGENT_LIB}" -jar "${BUNDLER_JAR}" --initSettings 2>&1)
+INIT_OUTPUT=$(java -agentpath:"${AGENT_PATH_NATIVE}" -jar "${BUNDLER_PATH_NATIVE}" --initSettings 2>&1)
 cd "${ROOT_DIR}"
 rm -rf "${INIT_TEST_DIR}"
 
@@ -86,7 +100,7 @@ cp "${ROOT_DIR}/examples/test-mod/mod.toml" "${SLICE_TEST_DIR}/mods/test_mod/"
 cp "${MOD_LIB}" "${SLICE_TEST_DIR}/mods/test_mod/"
 
 cd "${SLICE_TEST_DIR}"
-MOD_SERVER_OUTPUT=$(java -agentpath:"${AGENT_LIB}" -jar "${BUNDLER_JAR}" --initSettings 2>&1)
+MOD_SERVER_OUTPUT=$(java -agentpath:"${AGENT_PATH_NATIVE}" -jar "${BUNDLER_PATH_NATIVE}" --initSettings 2>&1)
 cd "${ROOT_DIR}"
 rm -rf "${SLICE_TEST_DIR}"
 

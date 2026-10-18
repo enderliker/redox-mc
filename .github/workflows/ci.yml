@@ -41,18 +41,16 @@ jobs:
 
   linux-test:
     name: Linux (${{ matrix.target.name }})
-    runs-on: ${{ matrix.target.os }}
+    runs-on: ubuntu-latest
     needs: quality
     strategy:
       fail-fast: false
       matrix:
         target:
           - name: "x86_64"
-            os: ubuntu-latest
             rust_target: "x86_64-unknown-linux-gnu"
             run_integration: true
           - name: "aarch64 (ARM64)"
-            os: ubuntu-latest
             rust_target: "aarch64-unknown-linux-gnu"
             run_integration: false
     steps:
@@ -72,6 +70,12 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install aarch64 cross-linker
+        if: matrix.target.rust_target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Setup Minecraft 26.3 environment
         run: ./scripts/setup_mc_env.sh
 
@@ -79,6 +83,8 @@ jobs:
         run: ./redox-mc-bridge/build.sh
 
       - name: Build Rust Workspace (${{ matrix.target.rust_target }})
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: cargo build --workspace --target ${{ matrix.target.rust_target }} --verbose
 
       - name: Run Cargo Tests (Native x86_64)
@@ -99,10 +105,10 @@ jobs:
         target:
           - name: "x86_64"
             rust_target: "x86_64-pc-windows-msvc"
-            run_tests: true
+            is_cross: false
           - name: "aarch64 (ARM64)"
             rust_target: "aarch64-pc-windows-msvc"
-            run_tests: false
+            is_cross: true
     steps:
       - uses: actions/checkout@v7
 
@@ -128,15 +134,20 @@ jobs:
         shell: bash
         run: ./redox-mc-bridge/build.sh
 
-      - name: Build Rust Workspace (${{ matrix.target.rust_target }})
+      - name: Build Rust Workspace (Native x86_64)
+        if: "!matrix.target.is_cross"
         run: cargo build --workspace --target ${{ matrix.target.rust_target }} --verbose
 
+      - name: Check Rust Workspace (ARM64 Cross-Check)
+        if: matrix.target.is_cross
+        run: cargo check --workspace --target ${{ matrix.target.rust_target }} --verbose
+
       - name: Run Cargo Tests (Native x86_64)
-        if: matrix.target.run_tests
+        if: "!matrix.target.is_cross"
         run: cargo test --workspace --verbose
 
       - name: Run Agent Integration Tests (Native x86_64)
-        if: matrix.target.run_tests
+        if: "!matrix.target.is_cross"
         shell: bash
         run: ./tests/run_task_1_2_tests.sh
 

@@ -31,6 +31,12 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
     let m_test_def = CString::new("testDefineClass").unwrap();
     let sig_test_def = CString::new("(Ljava/lang/String;[B)Z").unwrap();
 
+    let m_tick = CString::new("onServerTick").unwrap();
+    let sig_tick = CString::new("(J)V").unwrap();
+
+    let m_chat = CString::new("onServerChat").unwrap();
+    let sig_chat = CString::new("(Ljava/lang/String;Ljava/lang/String;)Z").unwrap();
+
     let methods = [
         jni::JNINativeMethod {
             name: m_init.as_ptr() as *mut _,
@@ -51,6 +57,16 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_frozen.as_ptr() as *mut _,
             signature: sig_void.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onRegistriesFrozen as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_tick.as_ptr() as *mut _,
+            signature: sig_tick.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onServerTick as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_chat.as_ptr() as *mut _,
+            signature: sig_chat.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onServerChat as *mut _,
         },
         jni::JNINativeMethod {
             name: m_captured.as_ptr() as *mut _,
@@ -134,6 +150,55 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onRegistriesFr
     _class: jni::jclass,
 ) {
     crate::transformer::registry_hook::handle_on_registries_frozen(env);
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onServerTick(long tickCount)
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onServerTick(
+    _env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    tick_count: jni::jlong,
+) {
+    crate::events::dispatch_server_tick(tick_count);
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onServerChat(String playerName, String message)
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onServerChat(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    player_str: jni::jstring,
+    msg_str: jni::jstring,
+) -> jni::jboolean {
+    if player_str.is_null() || msg_str.is_null() {
+        return jni::JNI_TRUE;
+    }
+
+    let p_chars = ((**env).GetStringUTFChars)(env, player_str, std::ptr::null_mut());
+    let m_chars = ((**env).GetStringUTFChars)(env, msg_str, std::ptr::null_mut());
+
+    if p_chars.is_null() || m_chars.is_null() {
+        if !p_chars.is_null() {
+            ((**env).ReleaseStringUTFChars)(env, player_str, p_chars);
+        }
+        if !m_chars.is_null() {
+            ((**env).ReleaseStringUTFChars)(env, msg_str, m_chars);
+        }
+        return jni::JNI_TRUE;
+    }
+
+    let player_name = CStr::from_ptr(p_chars).to_string_lossy().to_string();
+    let message = CStr::from_ptr(m_chars).to_string_lossy().to_string();
+
+    ((**env).ReleaseStringUTFChars)(env, player_str, p_chars);
+    ((**env).ReleaseStringUTFChars)(env, msg_str, m_chars);
+
+    let allow = crate::events::dispatch_server_chat(&player_name, &message);
+    if allow {
+        jni::JNI_TRUE
+    } else {
+        jni::JNI_FALSE
+    }
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.isClassLoaderCaptured()

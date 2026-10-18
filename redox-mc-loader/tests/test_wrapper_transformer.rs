@@ -235,3 +235,169 @@ public class CustomTarget {
     );
     println!("[TEST] javap verification on custom class passed successfully!");
 }
+
+#[test]
+fn test_transform_real_minecraft_server_tick_children() {
+    let jar_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../versions/26.3/server-26.3.jar");
+    if !jar_path.exists() {
+        println!("SKIPPED: server-26.3.jar not found at {:?}", jar_path);
+        return;
+    }
+
+    let server_bytes = match Command::new("unzip")
+        .args([
+            "-p",
+            jar_path.to_str().unwrap(),
+            "net/minecraft/server/MinecraftServer.class",
+        ])
+        .output()
+    {
+        Ok(out) if out.status.success() => out.stdout,
+        _ => return,
+    };
+
+    let transformed = transform_class(&server_bytes, HOOK_TARGETS)
+        .expect("Transformation must succeed")
+        .expect("MinecraftServer must match hook and produce transformed bytes");
+
+    assert_ne!(server_bytes, transformed);
+
+    let class_file =
+        ClassFile::from_bytes(&transformed).expect("Transformed classfile must be valid");
+    assert_eq!(
+        class_file.class_name().unwrap(),
+        "net/minecraft/server/MinecraftServer"
+    );
+
+    let mut found_original = false;
+    let mut found_wrapper = false;
+
+    for method in &class_file.methods {
+        let name = class_file
+            .constant_pool
+            .try_get_utf8(method.name_index)
+            .unwrap();
+        let desc = class_file
+            .constant_pool
+            .try_get_utf8(method.descriptor_index)
+            .unwrap();
+
+        if name == "tickChildren$original" && desc == "(Ljava/util/function/BooleanSupplier;)V" {
+            found_original = true;
+        }
+        if name == "tickChildren" && desc == "(Ljava/util/function/BooleanSupplier;)V" {
+            found_wrapper = true;
+        }
+    }
+
+    assert!(found_original, "Method 'tickChildren$original' must exist");
+    assert!(found_wrapper, "Wrapper method 'tickChildren' must exist");
+
+    let temp_dir = std::env::temp_dir().join("redox_test_minecraft_server");
+    fs::create_dir_all(&temp_dir).unwrap();
+    let temp_class = temp_dir.join("MinecraftServer.class");
+    fs::write(&temp_class, &transformed).unwrap();
+
+    let javap_output = Command::new("javap")
+        .args(["-v", "-p", temp_class.to_str().unwrap()])
+        .output()
+        .expect("Failed to execute javap");
+
+    assert!(
+        javap_output.status.success(),
+        "javap failed with error: {}",
+        String::from_utf8_lossy(&javap_output.stderr)
+    );
+
+    let javap_stdout = String::from_utf8_lossy(&javap_output.stdout);
+    assert!(javap_stdout.contains("tickChildren$original"));
+    assert!(javap_stdout.contains("ServerEvents.onServerTick"));
+    println!("[TEST] javap verification on transformed MinecraftServer.class passed!");
+}
+
+#[test]
+fn test_transform_real_minecraft_server_game_packet_listener_impl_handle_chat() {
+    let jar_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../versions/26.3/server-26.3.jar");
+    if !jar_path.exists() {
+        println!("SKIPPED: server-26.3.jar not found at {:?}", jar_path);
+        return;
+    }
+
+    let listener_bytes = match Command::new("unzip")
+        .args([
+            "-p",
+            jar_path.to_str().unwrap(),
+            "net/minecraft/server/network/ServerGamePacketListenerImpl.class",
+        ])
+        .output()
+    {
+        Ok(out) if out.status.success() => out.stdout,
+        _ => return,
+    };
+
+    let transformed = transform_class(&listener_bytes, HOOK_TARGETS)
+        .expect("Transformation must succeed")
+        .expect("ServerGamePacketListenerImpl must match hook and produce transformed bytes");
+
+    assert_ne!(listener_bytes, transformed);
+
+    let class_file =
+        ClassFile::from_bytes(&transformed).expect("Transformed classfile must be valid");
+    assert_eq!(
+        class_file.class_name().unwrap(),
+        "net/minecraft/server/network/ServerGamePacketListenerImpl"
+    );
+
+    let mut found_original = false;
+    let mut found_wrapper = false;
+
+    for method in &class_file.methods {
+        let name = class_file
+            .constant_pool
+            .try_get_utf8(method.name_index)
+            .unwrap();
+        let desc = class_file
+            .constant_pool
+            .try_get_utf8(method.descriptor_index)
+            .unwrap();
+
+        if name == "handleChat$original"
+            && desc == "(Lnet/minecraft/network/protocol/game/ServerboundChatPacket;)V"
+        {
+            found_original = true;
+        }
+        if name == "handleChat"
+            && desc == "(Lnet/minecraft/network/protocol/game/ServerboundChatPacket;)V"
+        {
+            found_wrapper = true;
+        }
+    }
+
+    assert!(found_original, "Method 'handleChat$original' must exist");
+    assert!(found_wrapper, "Wrapper method 'handleChat' must exist");
+
+    let temp_dir = std::env::temp_dir().join("redox_test_listener_impl");
+    fs::create_dir_all(&temp_dir).unwrap();
+    let temp_class = temp_dir.join("ServerGamePacketListenerImpl.class");
+    fs::write(&temp_class, &transformed).unwrap();
+
+    let javap_output = Command::new("javap")
+        .args(["-v", "-p", temp_class.to_str().unwrap()])
+        .output()
+        .expect("Failed to execute javap");
+
+    assert!(
+        javap_output.status.success(),
+        "javap failed with error: {}",
+        String::from_utf8_lossy(&javap_output.stderr)
+    );
+
+    let javap_stdout = String::from_utf8_lossy(&javap_output.stdout);
+    assert!(javap_stdout.contains("handleChat$original"));
+    assert!(javap_stdout.contains("ServerEvents.onHandleChat"));
+    assert!(javap_stdout.contains("StackMapTable"));
+    assert!(javap_stdout.contains("ifeq"));
+    println!("[TEST] javap verification on transformed ServerGamePacketListenerImpl.class passed!");
+}

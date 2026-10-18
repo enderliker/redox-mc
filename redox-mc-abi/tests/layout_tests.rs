@@ -67,14 +67,15 @@ fn test_abi_layout_and_alignment_64bit() {
     assert_eq!(offset_of!(LoaderVTable, free_string), 16);
     assert_eq!(offset_of!(LoaderVTable, free_buffer), 24);
 
-    // 10. ModVTable (5 function pointers = 5 * 8 = 40 bytes)
-    assert_eq!(size_of::<ModVTable>(), 40);
+    // 10. ModVTable (6 function pointers = 6 * 8 = 48 bytes)
+    assert_eq!(size_of::<ModVTable>(), 48);
     assert_eq!(align_of::<ModVTable>(), 8);
     assert_eq!(offset_of!(ModVTable, on_bootstrap), 0);
     assert_eq!(offset_of!(ModVTable, on_register_content), 8);
     assert_eq!(offset_of!(ModVTable, on_server_tick), 16);
-    assert_eq!(offset_of!(ModVTable, free_string), 24);
-    assert_eq!(offset_of!(ModVTable, free_buffer), 32);
+    assert_eq!(offset_of!(ModVTable, on_server_chat), 24);
+    assert_eq!(offset_of!(ModVTable, free_string), 32);
+    assert_eq!(offset_of!(ModVTable, free_buffer), 40);
 
     // 11. FfiResult
     assert_eq!(size_of::<FfiResult<u32>>(), 8);
@@ -216,6 +217,7 @@ fn test_mock_loader_and_mod_handshake() {
         on_bootstrap: Some(mock_mod_bootstrap),
         on_register_content: None,
         on_server_tick: None,
+        on_server_chat: None,
         free_string: redox_mod_free_string,
         free_buffer: redox_mod_free_buffer,
     };

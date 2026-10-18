@@ -254,3 +254,56 @@ fn test_concurrent_dispatch_thread_safety() {
         "All 10 threads must complete 100 dispatches concurrently"
     );
 }
+
+#[test]
+fn test_server_tick_event_dispatch() {
+    use redox_mc_api::event::ServerTickEvent;
+
+    let bus = EventBus::new();
+    let tick_observed = Arc::new(AtomicUsize::new(0));
+    let t_clone = tick_observed.clone();
+
+    bus.subscribe::<ServerTickEvent, _, _>(move |event| {
+        t_clone.store(event.tick_count as usize, Ordering::SeqCst);
+    });
+
+    let mut event = ServerTickEvent::new(42);
+    let result = bus.dispatch(&mut event);
+
+    assert_eq!(result, EventResult::Allow);
+    assert_eq!(tick_observed.load(Ordering::SeqCst), 42);
+}
+
+#[test]
+fn test_server_chat_event_cancellation() {
+    use redox_mc_api::event::ServerChatEvent;
+
+    let bus = EventBus::new();
+
+    // Security/command filter: cancel messages starting with '!'
+    bus.subscribe_with_priority::<ServerChatEvent, _, _>(EventPriority::Highest, |event| {
+        if event.message().starts_with('!') {
+            event.cancel();
+        }
+    });
+
+    let normal_called = Arc::new(AtomicBool::new(false));
+    let n_clone = normal_called.clone();
+    bus.subscribe_with_priority::<ServerChatEvent, _, _>(EventPriority::Normal, move |_| {
+        n_clone.store(true, Ordering::SeqCst);
+    });
+
+    // Test 1: Chat message with '!' should be cancelled and normal handler should not run
+    let mut cmd_chat = ServerChatEvent::new("Alice", "!help");
+    let result1 = bus.dispatch(&mut cmd_chat);
+    assert_eq!(result1, EventResult::Cancel);
+    assert!(cmd_chat.is_cancelled());
+    assert!(!normal_called.load(Ordering::SeqCst));
+
+    // Test 2: Standard chat message should pass through
+    let mut normal_chat = ServerChatEvent::new("Bob", "Hello world");
+    let result2 = bus.dispatch(&mut normal_chat);
+    assert_eq!(result2, EventResult::Allow);
+    assert!(!normal_chat.is_cancelled());
+    assert!(normal_called.load(Ordering::SeqCst));
+}

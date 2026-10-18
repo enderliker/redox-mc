@@ -4,6 +4,7 @@ pub mod adapter;
 pub mod bench;
 pub mod bridge_jni;
 pub mod class_injector;
+pub mod events;
 pub mod manifest;
 pub mod mod_loader;
 pub mod mod_resolver;

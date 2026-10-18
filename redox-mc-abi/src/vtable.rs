@@ -61,7 +61,12 @@ pub struct ModVTable {
     pub on_register_content: Option<unsafe extern "C" fn() -> FfiStatus>,
 
     /// Called every server tick loop (`MinecraftServer.tickChildren`).
-    pub on_server_tick: Option<unsafe extern "C" fn() -> FfiStatus>,
+    pub on_server_tick: Option<unsafe extern "C" fn(tick_count: i64) -> FfiStatus>,
+
+    /// Called on player chat (`ServerGamePacketListenerImpl.handleChat`).
+    /// Returns FfiResult::ok(true) to allow delivery, or FfiResult::ok(false) to cancel/drop.
+    pub on_server_chat:
+        Option<unsafe extern "C" fn(player_name: FfiStr, message: FfiStr) -> FfiResult<bool>>,
 
     /// Frees an `FfiString` that was allocated by this mod.
     pub free_string: unsafe extern "C" fn(s: FfiString),

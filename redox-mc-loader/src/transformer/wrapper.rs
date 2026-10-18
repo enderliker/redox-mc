@@ -1,5 +1,5 @@
 use redox_mc_adapter_api::{HookTarget, HookTechnique};
-use ristretto_classfile::attributes::{Attribute, Instruction, MaxStack};
+use ristretto_classfile::attributes::{Attribute, Instruction, MaxStack, StackFrame};
 use ristretto_classfile::{ClassFile, Method, MethodAccessFlags};
 use thiserror::Error;
 
@@ -231,58 +231,123 @@ pub fn apply_wrapper_hooks(
 
         // 3. Generate instructions for wrapper method
         let mut instructions = Vec::new();
+        let (bridge_params, _bridge_ret) = parse_descriptor(hook.bridge_desc)?;
+        let is_cancellable = hook.bridge_desc.ends_with(")Z") && ret_type.is_none();
+
+        // Push arguments required by the bridge hook method
+        if !bridge_params.is_empty() {
+            if !is_static {
+                instructions.push(Instruction::Aload_0);
+            }
+            let num_additional = bridge_params
+                .len()
+                .saturating_sub(if is_static { 0 } else { 1 });
+            let mut param_slot = if is_static { 0u8 } else { 1u8 };
+            for param in params.iter().take(num_additional) {
+                instructions.push(make_load_instruction(*param, param_slot));
+                param_slot += param.slots();
+            }
+        }
 
         // Call the bridge hook first
         instructions.push(Instruction::Invokestatic(bridge_method_ref));
 
-        // If the bridge method returned something and caller expects void, pop it
-        if hook.bridge_desc.ends_with(")Z") || hook.bridge_desc.ends_with(")I") {
-            instructions.push(Instruction::Pop);
-        }
+        let mut code_attributes = Vec::new();
 
-        // Load parameters for the original method call
-        let mut current_slot = 0u8;
-        if !is_static {
-            instructions.push(Instruction::Aload_0);
-            current_slot = 1;
-        }
+        if is_cancellable {
+            // Placeholder for Ifeq; branch target will point to the Return instruction
+            let ifeq_idx = instructions.len();
+            instructions.push(Instruction::Ifeq(0));
 
-        for param in &params {
-            instructions.push(make_load_instruction(*param, current_slot));
-            current_slot += param.slots();
-        }
+            // Load parameters for the original method call
+            let mut current_slot = 0u8;
+            if !is_static {
+                instructions.push(Instruction::Aload_0);
+                current_slot = 1;
+            }
 
-        // Invoke the original method
-        if is_static {
-            instructions.push(Instruction::Invokestatic(orig_method_ref));
+            for param in &params {
+                instructions.push(make_load_instruction(*param, current_slot));
+                current_slot += param.slots();
+            }
+
+            // Invoke the original method
+            if is_static {
+                instructions.push(Instruction::Invokestatic(orig_method_ref));
+            } else {
+                instructions.push(Instruction::Invokevirtual(orig_method_ref));
+            }
+
+            // Return from the wrapper (target of Ifeq jump when cancelled)
+            let target_return_idx = instructions.len() as u16;
+            instructions.push(make_return_instruction(ret_type));
+
+            // Update Ifeq instruction with the exact target instruction index
+            instructions[ifeq_idx] = Instruction::Ifeq(target_return_idx);
+
+            // In ristretto_classfile's in-memory model, StackFrame offsets are logical
+            // instruction indices, which are mapped to bytecode offsets during serialization.
+            let smt_frame = StackFrame::SameFrame {
+                frame_type: target_return_idx as u8,
+            };
+
+            let smt_name_idx = class_file.constant_pool.add_utf8("StackMapTable")?;
+            code_attributes.push(Attribute::StackMapTable {
+                name_index: smt_name_idx,
+                frames: vec![smt_frame],
+            });
         } else {
-            instructions.push(Instruction::Invokevirtual(orig_method_ref));
-        }
-
-        // Invoke optional post-bridge callback
-        if let (Some(post_method), Some(post_desc)) =
-            (hook.post_bridge_method, hook.post_bridge_desc)
-        {
-            let post_method_ref = class_file.constant_pool.add_method_ref(
-                bridge_class_idx,
-                post_method,
-                post_desc,
-            )?;
-            instructions.push(Instruction::Invokestatic(post_method_ref));
-            if post_desc.ends_with(")Z") || post_desc.ends_with(")I") {
+            // If the bridge method returned something and caller expects void, pop it
+            if hook.bridge_desc.ends_with(")Z") || hook.bridge_desc.ends_with(")I") {
                 instructions.push(Instruction::Pop);
             }
-        }
 
-        // Return from the wrapper
-        instructions.push(make_return_instruction(ret_type));
+            // Load parameters for the original method call
+            let mut current_slot = 0u8;
+            if !is_static {
+                instructions.push(Instruction::Aload_0);
+                current_slot = 1;
+            }
+
+            for param in &params {
+                instructions.push(make_load_instruction(*param, current_slot));
+                current_slot += param.slots();
+            }
+
+            // Invoke the original method
+            if is_static {
+                instructions.push(Instruction::Invokestatic(orig_method_ref));
+            } else {
+                instructions.push(Instruction::Invokevirtual(orig_method_ref));
+            }
+
+            // Invoke optional post-bridge callback
+            if let (Some(post_method), Some(post_desc)) =
+                (hook.post_bridge_method, hook.post_bridge_desc)
+            {
+                let post_method_ref = class_file.constant_pool.add_method_ref(
+                    bridge_class_idx,
+                    post_method,
+                    post_desc,
+                )?;
+                instructions.push(Instruction::Invokestatic(post_method_ref));
+                if post_desc.ends_with(")Z") || post_desc.ends_with(")I") {
+                    instructions.push(Instruction::Pop);
+                }
+            }
+
+            // Return from the wrapper
+            instructions.push(make_return_instruction(ret_type));
+        }
 
         // 4. Calculate max_stack and max_locals
         let computed_stack = instructions
             .max_stack(&class_file.constant_pool)
             .unwrap_or(4);
-        let max_stack = computed_stack.max(1);
-        let max_locals = (current_slot as u16).max(if is_static { 0 } else { 1 });
+        let max_stack = computed_stack.max(2);
+        let total_param_slots =
+            params.iter().map(|p| p.slots()).sum::<u8>() + if is_static { 0 } else { 1 };
+        let max_locals = (total_param_slots as u16).max(if is_static { 0 } else { 1 });
 
         let code_name_idx = class_file.constant_pool.add_utf8("Code")?;
         let code_attr = Attribute::Code {
@@ -291,7 +356,7 @@ pub fn apply_wrapper_hooks(
             max_locals,
             code: instructions,
             exception_table: Vec::new(),
-            attributes: Vec::new(), // NO StackMapTable needed: straight-line basic block!
+            attributes: code_attributes,
         };
 
         let wrapper_method = Method {

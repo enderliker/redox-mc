@@ -61,9 +61,30 @@ fn test_dynamic_mod_discovery_and_loading() {
         loaded.on_bootstrap_fn.is_some(),
         "redox_mod_on_bootstrap symbol must be resolved"
     );
+    assert!(
+        loaded.on_server_tick_fn.is_some(),
+        "redox_mod_on_server_tick symbol must be resolved"
+    );
+    assert!(
+        loaded.on_server_chat_fn.is_some(),
+        "redox_mod_on_server_chat symbol must be resolved"
+    );
 
-    // 4. Test dispatch_bootstrap
+    // 4. Test lifecycle and gameplay hook dispatches
     manager.dispatch_bootstrap();
+    manager.dispatch_register_content();
+    manager.dispatch_server_tick(1);
+
+    // Normal chat message must be allowed (returns true)
+    let allow = manager.dispatch_server_chat("Steve", "Hello world!");
+    assert!(allow, "Normal chat message should be allowed by test-mod");
+
+    // Message prefixed with '!' must be cancelled (returns false)
+    let cancelled = manager.dispatch_server_chat("Steve", "!bad message");
+    assert!(
+        !cancelled,
+        "Chat message prefixed with '!' should be cancelled by test-mod"
+    );
 
     // Cleanup
     let _ = fs::remove_dir_all(&temp_dir);

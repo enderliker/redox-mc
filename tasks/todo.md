@@ -307,12 +307,12 @@
 **Description:** Inyectar hooks envoltorios en `MinecraftServer.tickChildren()` para disparar `ServerTickEvent` y en `ServerGamePacketListenerImpl.handleChat()` para `ServerChatEvent`. Conectar el puente Java con el bus de eventos de Rust y verificar en un servidor headless sin mocks.
 
 **Acceptance criteria:**
-- [ ] `ServerTickEvent` se despacha cada 50 ms (20 Hz) transmitiendo el número de tick sin fugas de memoria.
-- [ ] `ServerChatEvent` intercepta los mensajes de chat; si el mod cancela el evento, el mensaje no se entrega a los destinatarios.
-- [ ] Las pruebas de verificación se ejecutan directamente contra el servidor headless en lugar de usar mocks de Java.
+- [x] `ServerTickEvent` se despacha cada 50 ms (20 Hz) transmitiendo el número de tick sin fugas de memoria.
+- [x] `ServerChatEvent` intercepta los mensajes de chat; si el mod cancela el evento, el mensaje no se entrega a los destinatarios.
+- [x] Las pruebas de verificación se ejecutan directamente contra el servidor headless en lugar de usar mocks de Java.
 
 **Verification:**
-- [ ] Manual check: Mod de prueba que registra un contador de ticks y bloquea mensajes de chat con prefijo `!`, probado en el servidor dedicado.
+- [x] Manual check: Mod de prueba que registra un contador de ticks y bloquea mensajes de chat con prefijo `!`, probado en el servidor dedicado (`server.jar`) y en `test_mod_loading` / `test_wrapper_transformer`.
 
 **Dependencies:** Task 3.1, Task 3.2
 
@@ -326,9 +326,9 @@
 ---
 
 ## Checkpoint: Ciclo de Vida y Eventos
-- [ ] Hook de registro en `BuiltInRegistries.freeze()` verificado y seguro.
-- [ ] Eventos de tick y chat despachados a Rust en servidor headless real.
-- [ ] Cero fugas de referencias JNI locales en bucles de alta frecuencia.
+- [x] Hook de registro en `BuiltInRegistries.freeze()` verificado y seguro.
+- [x] Eventos de tick y chat despachados a Rust en servidor headless real.
+- [x] Cero fugas de referencias JNI locales en bucles de alta frecuencia.
 
 ---
 

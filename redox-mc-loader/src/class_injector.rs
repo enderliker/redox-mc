@@ -170,10 +170,23 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
     define_class(env, item_name, loader, TEST_MINECRAFT_SAVEDDATA_BYTES)?;
     println!("[redox-mc-loader] Defined real Minecraft subclass: {} (extends net.minecraft.world.level.saveddata.SavedData)", item_name);
 
+    // 4. Server events bridge: ServerEvents
+    let server_events_name = "net/redoxmc/bridge/event/ServerEvents";
+    define_class(env, server_events_name, loader, SERVER_EVENTS_BYTES)?;
+    println!(
+        "[redox-mc-loader] Defined server events class: {}",
+        server_events_name
+    );
+
     GAME_CLASSES_DEFINED.store(true, Ordering::Release);
     println!("[redox-mc-loader] All bridge-game classes defined successfully.");
     Ok(())
 }
+
+pub const SERVER_EVENTS_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/event/ServerEvents.class"
+));
 
 pub const TEST_MINECRAFT_SAVEDDATA_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),

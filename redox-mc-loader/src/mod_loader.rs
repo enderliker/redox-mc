@@ -40,6 +40,13 @@ pub struct LoadedMod {
     pub _library: Box<libloading::Library>,
     pub on_bootstrap_fn: Option<unsafe extern "C" fn()>,
     pub on_register_content_fn: Option<unsafe extern "C" fn() -> redox_mc_abi::types::FfiStatus>,
+    pub on_server_tick_fn: Option<unsafe extern "C" fn(i64) -> redox_mc_abi::types::FfiStatus>,
+    pub on_server_chat_fn: Option<
+        unsafe extern "C" fn(
+            redox_mc_abi::types::FfiStr,
+            redox_mc_abi::types::FfiStr,
+        ) -> redox_mc_abi::types::FfiResult<bool>,
+    >,
 }
 
 pub struct ModManager {
@@ -260,12 +267,36 @@ impl ModManager {
                 reg_symbol.ok().map(|s| *s)
             };
 
+            // Resolve server_tick callback (from vtable or explicit symbol)
+            let on_server_tick_fn = if let Some(vtable) = vtable_opt {
+                vtable.on_server_tick
+            } else {
+                type TickFn = unsafe extern "C" fn(i64) -> redox_mc_abi::types::FfiStatus;
+                let tick_symbol = unsafe { boxed_lib.get::<TickFn>(b"redox_mod_on_server_tick\0") };
+                tick_symbol.ok().map(|s| *s)
+            };
+
+            // Resolve server_chat callback (from vtable or explicit symbol)
+            let on_server_chat_fn = if let Some(vtable) = vtable_opt {
+                vtable.on_server_chat
+            } else {
+                type ChatFn = unsafe extern "C" fn(
+                    redox_mc_abi::types::FfiStr,
+                    redox_mc_abi::types::FfiStr,
+                )
+                    -> redox_mc_abi::types::FfiResult<bool>;
+                let chat_symbol = unsafe { boxed_lib.get::<ChatFn>(b"redox_mod_on_server_chat\0") };
+                chat_symbol.ok().map(|s| *s)
+            };
+
             self.loaded_mods.push(LoadedMod {
                 manifest,
                 binary_path: candidate.binary_path.clone(),
                 _library: boxed_lib,
                 on_bootstrap_fn,
                 on_register_content_fn,
+                on_server_tick_fn,
+                on_server_chat_fn,
             });
         }
 
@@ -321,6 +352,50 @@ impl ModManager {
                 }
             }
         }
+    }
+
+    /// Dispatches a server tick event to all loaded mods.
+    pub fn dispatch_server_tick(&self, tick_count: i64) {
+        for loaded in &self.loaded_mods {
+            if let Some(cb) = loaded.on_server_tick_fn {
+                let status = unsafe { cb(tick_count) };
+                if let Err(safety_err) =
+                    crate::safety::check_ffi_status(&loaded.manifest.id, status)
+                {
+                    eprintln!(
+                        "[redox-mc-loader] ERROR: Mod '{}' on_server_tick failed: {}",
+                        loaded.manifest.id, safety_err
+                    );
+                }
+            }
+        }
+    }
+
+    /// Dispatches a player chat event to all loaded mods.
+    /// Returns true if allowed, false if cancelled by any loaded mod.
+    pub fn dispatch_server_chat(&self, player_name: &str, message: &str) -> bool {
+        let ffi_player = redox_mc_abi::types::FfiStr::from_str(player_name);
+        let ffi_msg = redox_mc_abi::types::FfiStr::from_str(message);
+
+        for loaded in &self.loaded_mods {
+            if let Some(cb) = loaded.on_server_chat_fn {
+                let res = unsafe { cb(ffi_player, ffi_msg) };
+                match crate::safety::check_ffi_result(&loaded.manifest.id, res) {
+                    Ok(allow) => {
+                        if !allow {
+                            return false;
+                        }
+                    }
+                    Err(safety_err) => {
+                        eprintln!(
+                            "[redox-mc-loader] ERROR: Mod '{}' on_server_chat failed: {}",
+                            loaded.manifest.id, safety_err
+                        );
+                    }
+                }
+            }
+        }
+        true
     }
 
     pub fn loaded_mods(&self) -> &[LoadedMod] {
@@ -443,6 +518,25 @@ pub fn on_register_content() {
                 }
             }
         }
+    }
+}
+
+/// Called from RedoxBridge.onServerTick(long tickCount)
+pub fn on_server_tick(tick_count: i64) {
+    let guard = MOD_MANAGER.lock().unwrap();
+    if let Some(manager) = guard.as_ref() {
+        manager.dispatch_server_tick(tick_count);
+    }
+}
+
+/// Called from RedoxBridge.onServerChat(String playerName, String message)
+/// Returns true if allowed, false if cancelled by any loaded mod.
+pub fn on_server_chat(player_name: &str, message: &str) -> bool {
+    let guard = MOD_MANAGER.lock().unwrap();
+    if let Some(manager) = guard.as_ref() {
+        manager.dispatch_server_chat(player_name, message)
+    } else {
+        true
     }
 }
 

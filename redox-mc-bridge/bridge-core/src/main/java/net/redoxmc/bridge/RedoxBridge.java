@@ -34,6 +34,17 @@ public final class RedoxBridge {
     public static native void onRegistriesFrozen();
 
     /**
+     * Hook called every server tick loop with the current tick count.
+     */
+    public static native void onServerTick(long tickCount);
+
+    /**
+     * Hook called on incoming player chat messages.
+     * Returns true to allow message delivery, false to cancel/drop the message.
+     */
+    public static native boolean onServerChat(String playerName, String message);
+
+    /**
      * Returns true if the game classloader (first class in net/minecraft/*) has been captured.
      */
     public static native boolean isClassLoaderCaptured();

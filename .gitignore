@@ -36,3 +36,6 @@ hs_err_pid*.log
 *.iml
 .DS_Store
 Thumbs.db
+
+# Agent handoff
+handoff.md

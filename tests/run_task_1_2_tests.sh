@@ -60,6 +60,7 @@ if [ ! -f "${AGENT_LIB}" ]; then
 fi
 
 AGENT_PATH_NATIVE=$(to_native_path "${AGENT_LIB}")
+MOD_PATH_NATIVE=$(to_native_path "${MOD_LIB}")
 TEST_CLASSES_NATIVE=$(to_native_path "${ROOT_DIR}/redox-mc-bridge/build/test-classes")
 CORE_JAR_NATIVE=$(to_native_path "${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar")
 SERVER_JAR_NATIVE=$(to_native_path "${ROOT_DIR}/versions/26.3/server-26.3.jar")
@@ -143,7 +144,11 @@ echo "[TEST] PASS: Vertical slice fully operational! Native Rust mod discovered,
 
 echo ""
 echo "=== Running Test 6: Task 4.3 Headless Server Item Validation (Console Commands) ==="
-python3 "${ROOT_DIR}/tests/test_headless_item.py"
+PYTHON_CMD="python3"
+if ! command -v python3 >/dev/null 2>&1 && command -v python >/dev/null 2>&1; then
+    PYTHON_CMD="python"
+fi
+AGENT_LIB="${AGENT_PATH_NATIVE}" MOD_LIB="${MOD_PATH_NATIVE}" BUNDLER_JAR="${BUNDLER_PATH_NATIVE}" "${PYTHON_CMD}" "${ROOT_DIR}/tests/test_headless_item.py"
 
 echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"

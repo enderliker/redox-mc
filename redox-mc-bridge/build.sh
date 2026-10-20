@@ -26,7 +26,7 @@ to_native_path() {
 
 echo "[redox-mc-bridge] Compiling bridge-game against Minecraft server jar..."
 MC_SERVER_JAR="${SCRIPT_DIR}/../versions/26.3/server-26.3.jar"
-if [ ! -f "${MC_SERVER_JAR}" ]; then
+if [ ! -f "${MC_SERVER_JAR}" ] || [ ! -d "${SCRIPT_DIR}/../libraries" ] || [ -z "$(find "${SCRIPT_DIR}/../libraries" -name "*.jar" -print -quit 2>/dev/null)" ]; then
     "${SCRIPT_DIR}/../scripts/setup_mc_env.sh"
 fi
 

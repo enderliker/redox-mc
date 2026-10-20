@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VERSIONS_DIR="${ROOT_DIR}/versions/26.3"
 BUNDLER_TARGET="${VERSIONS_DIR}/server.jar"
 SERVER_INNER="${VERSIONS_DIR}/server-26.3.jar"
+LIBRARIES_DIR="${ROOT_DIR}/libraries"
 
 mkdir -p "${VERSIONS_DIR}"
 
@@ -36,6 +37,23 @@ if [ ! -f "${SERVER_INNER}" ]; then
     fi
 fi
 
+# 3. Ensure bundler libraries are extracted
+if [ ! -d "${LIBRARIES_DIR}" ] || [ -z "$(find "${LIBRARIES_DIR}" -name "*.jar" -print -quit 2>/dev/null)" ]; then
+    echo "[setup] Extracting bundler libraries from ${BUNDLER_TARGET} into ${LIBRARIES_DIR}..."
+    mkdir -p "${LIBRARIES_DIR}"
+    EXTRACT_TMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_libs')
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "${BUNDLER_TARGET}" "META-INF/libraries/*" -d "${EXTRACT_TMP}"
+    else
+        (cd "${EXTRACT_TMP}" && jar xf "${BUNDLER_TARGET}" "META-INF/libraries")
+    fi
+    if [ -d "${EXTRACT_TMP}/META-INF/libraries" ]; then
+        cp -r "${EXTRACT_TMP}/META-INF/libraries/"* "${LIBRARIES_DIR}/"
+    fi
+    rm -rf "${EXTRACT_TMP}"
+fi
+
 echo "[setup] Minecraft 26.3 environment ready:"
 echo " - Bundler jar: ${BUNDLER_TARGET} ($(ls -lh "${BUNDLER_TARGET}" | awk '{print $5}'))"
 echo " - Inner jar:   ${SERVER_INNER} ($(ls -lh "${SERVER_INNER}" | awk '{print $5}'))"
+echo " - Libraries:   ${LIBRARIES_DIR} ($(find "${LIBRARIES_DIR}" -name "*.jar" | wc -l) jars)"

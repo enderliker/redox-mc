@@ -190,6 +190,14 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         server_events_name
     );
 
+    // 5. Generic item bridge: GenericRustItem
+    let generic_item_name = "net/redoxmc/bridge/item/GenericRustItem";
+    define_class(env, generic_item_name, loader, GENERIC_RUST_ITEM_BYTES)?;
+    println!(
+        "[redox-mc-loader] Defined generic item class: {}",
+        generic_item_name
+    );
+
     GAME_CLASSES_DEFINED.store(true, Ordering::Release);
     println!("[redox-mc-loader] All bridge-game classes defined successfully.");
     Ok(())
@@ -203,6 +211,11 @@ pub const SERVER_EVENTS_BYTES: &[u8] = include_bytes!(concat!(
 pub const TEST_MINECRAFT_SAVEDDATA_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/game/TestMinecraftSavedData.class"
+));
+
+pub const GENERIC_RUST_ITEM_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/item/GenericRustItem.class"
 ));
 
 /// Verifies that a real Minecraft subclass was defined, linked, and can be instantiated

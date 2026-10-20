@@ -338,12 +338,12 @@
 **Description:** Implementar en `redox-mc-bridge-game` la clase `GenericRustItem extends Item`. Esta clase se compila contra el jar del juego y se inyecta en su classloader mediante `DefineClass`. Delega interacciones (`use`, `useOn`, `finishUsingItem`) a callbacks nativos en `RedoxBridge` sólo si el mod declaró comportamiento activo; si el ítem es pasivo, el cruce JNI es omitido.
 
 **Acceptance criteria:**
-- [ ] Se instancia correctamente pasando `Item.Properties.setId(id)`.
-- [ ] Los métodos virtuales invocan el callback nativo sólo si el mod tiene lógica registrada.
-- [ ] La clase reside en `bridge-game` y es accesible para el motor del juego sin conflictos de visibilidad.
+- [x] Se instancia correctamente pasando `Item.Properties.setId(id)`.
+- [x] Los métodos virtuales invocan el callback nativo sólo si el mod tiene lógica registrada.
+- [x] La clase reside en `bridge-game` y es accesible para el motor del juego sin conflictos de visibilidad.
 
 **Verification:**
-- [ ] Build succeeds: Compilar `redox-mc-bridge-game.jar`.
+- [x] Build succeeds: Compilar `redox-mc-bridge-game.jar` e inyectar `GenericRustItem` en el classloader del juego.
 
 **Dependencies:** Task 1.2, Task 3.1
 

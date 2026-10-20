@@ -45,6 +45,23 @@ public final class RedoxBridge {
     public static native boolean onServerChat(String playerName, String message);
 
     /**
+     * Hook called when a player uses an item (right-click in air).
+     * Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
+     */
+    public static native int onItemUse(String itemId, int hand);
+
+    /**
+     * Hook called when a player uses an item on a block.
+     * Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
+     */
+    public static native int onItemUseOn(String itemId, int x, int y, int z, int face, int hand);
+
+    /**
+     * Hook called when an item finishes being used (e.g. food/potion finished consuming).
+     */
+    public static native void onItemFinishUsing(String itemId);
+
+    /**
      * Returns true if the game classloader (first class in net/minecraft/*) has been captured.
      */
     public static native boolean isClassLoaderCaptured();

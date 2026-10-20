@@ -40,6 +40,15 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
     let m_chat = CString::new("onServerChat").unwrap();
     let sig_chat = CString::new("(Ljava/lang/String;Ljava/lang/String;)Z").unwrap();
 
+    let m_item_use = CString::new("onItemUse").unwrap();
+    let sig_item_use = CString::new("(Ljava/lang/String;I)I").unwrap();
+
+    let m_item_use_on = CString::new("onItemUseOn").unwrap();
+    let sig_item_use_on = CString::new("(Ljava/lang/String;IIIII)I").unwrap();
+
+    let m_item_finish = CString::new("onItemFinishUsing").unwrap();
+    let sig_item_finish = CString::new("(Ljava/lang/String;)V").unwrap();
+
     let methods = [
         jni::JNINativeMethod {
             name: m_init.as_ptr() as *mut _,
@@ -70,6 +79,21 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_chat.as_ptr() as *mut _,
             signature: sig_chat.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onServerChat as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_item_use.as_ptr() as *mut _,
+            signature: sig_item_use.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onItemUse as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_item_use_on.as_ptr() as *mut _,
+            signature: sig_item_use_on.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onItemUseOn as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_item_finish.as_ptr() as *mut _,
+            signature: sig_item_finish.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onItemFinishUsing as *mut _,
         },
         jni::JNINativeMethod {
             name: m_captured.as_ptr() as *mut _,
@@ -238,6 +262,97 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onServerChat(
     }));
 
     result.unwrap_or(jni::JNI_TRUE)
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onItemUse(String itemId, int hand)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string reference.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onItemUse(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    item_str: jni::jstring,
+    hand: jni::jint,
+) -> jni::jint {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if item_str.is_null() {
+            return 0;
+        }
+        let chars = ((**env).GetStringUTFChars)(env, item_str, std::ptr::null_mut());
+        if chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return 0;
+        }
+        let item_id = CStr::from_ptr(chars).to_string_lossy();
+        let res = crate::events::dispatch_item_use(&item_id, hand);
+        ((**env).ReleaseStringUTFChars)(env, item_str, chars);
+        res
+    }));
+    result.unwrap_or(0)
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onItemUseOn(String itemId, int x, int y, int z, int face, int hand)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string reference.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onItemUseOn(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    item_str: jni::jstring,
+    x: jni::jint,
+    y: jni::jint,
+    z: jni::jint,
+    face: jni::jint,
+    hand: jni::jint,
+) -> jni::jint {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if item_str.is_null() {
+            return 0;
+        }
+        let chars = ((**env).GetStringUTFChars)(env, item_str, std::ptr::null_mut());
+        if chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return 0;
+        }
+        let item_id = CStr::from_ptr(chars).to_string_lossy();
+        let res = crate::events::dispatch_item_use_on(&item_id, x, y, z, face, hand);
+        ((**env).ReleaseStringUTFChars)(env, item_str, chars);
+        res
+    }));
+    result.unwrap_or(0)
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onItemFinishUsing(String itemId)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string reference.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onItemFinishUsing(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    item_str: jni::jstring,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if item_str.is_null() {
+            return;
+        }
+        let chars = ((**env).GetStringUTFChars)(env, item_str, std::ptr::null_mut());
+        if chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return;
+        }
+        let item_id = CStr::from_ptr(chars).to_string_lossy();
+        crate::events::dispatch_item_finish_using(&item_id);
+        ((**env).ReleaseStringUTFChars)(env, item_str, chars);
+    }));
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.isClassLoaderCaptured()

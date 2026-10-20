@@ -594,6 +594,34 @@ pub fn on_server_chat(player_name: &str, message: &str) -> bool {
     true
 }
 
+/// Dispatches item use to loaded mods.
+/// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
+pub fn on_item_use(item_id: &str, _hand: i32) -> i32 {
+    println!(
+        "[redox-mc-loader] Native on_item_use: item_id='{}'",
+        item_id
+    );
+    0
+}
+
+/// Dispatches item useOn to loaded mods.
+/// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
+pub fn on_item_use_on(item_id: &str, _x: i32, _y: i32, _z: i32, _face: i32, _hand: i32) -> i32 {
+    println!(
+        "[redox-mc-loader] Native on_item_use_on: item_id='{}'",
+        item_id
+    );
+    0
+}
+
+/// Dispatches item finish using to loaded mods.
+pub fn on_item_finish_using(item_id: &str) {
+    println!(
+        "[redox-mc-loader] Native on_item_finish_using: item_id='{}'",
+        item_id
+    );
+}
+
 fn find_binary_in_dir(dir: &Path) -> Option<PathBuf> {
     let entries = fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {

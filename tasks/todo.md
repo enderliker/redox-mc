@@ -358,12 +358,12 @@
 **Description:** Implementar en `redox-mc-api` el builder declarativo `ItemDefinition` y en `redox-mc-loader` el registro determinista en `BuiltInRegistries.ITEM`. Implementar el generador de hash de contenido de registros (SHA-256 o xxHash sobre los IDs y propiedades de ítems registrados en orden determinista).
 
 **Acceptance criteria:**
-- [ ] Sintaxis declarativa: `ItemDefinition::new("testmod:ruby").max_stack_size(64)`.
-- [ ] El registro se ejecuta en el orden determinista dictado por la Fase 1.
-- [ ] Se computa un hash acumulado de todos los ítems registrados disponible para la fase de handshake.
+- [x] Sintaxis declarativa: `ItemDefinition::new("testmod:ruby").max_stack_size(64)`.
+- [x] El registro se ejecuta en el orden determinista dictado por la Fase 1.
+- [x] Se computa un hash acumulado de todos los ítems registrados disponible para la fase de handshake.
 
 **Verification:**
-- [ ] Tests pass: `cargo test -p redox-mc-loader --test registry_hash` confirmando hash idéntico en ejecuciones sucesivas.
+- [x] Tests pass: `cargo test -p redox-mc-loader --test registry_hash` confirmando hash idéntico en ejecuciones sucesivas.
 
 **Dependencies:** Task 4.1, Task 1.5
 
@@ -380,12 +380,12 @@
 **Description:** Registrar el ítem `testmod:ruby` en `examples/test-mod` y validar su comportamiento en un servidor headless real mediante comandos de consola.
 
 **Acceptance criteria:**
-- [ ] El servidor arranca sin advertencias de ítems no registrados.
-- [ ] El comando `/give @p testmod:ruby 5` entrega el ítem al inventario del jugador de prueba.
-- [ ] La interacción con el ítem dispara el callback en Rust si está configurado.
+- [x] El servidor arranca sin advertencias de ítems no registrados.
+- [x] El comando `/give @p testmod:ruby 5` entrega el ítem al inventario del jugador de prueba.
+- [x] La interacción con el ítem dispara el callback en Rust si está configurado.
 
 **Verification:**
-- [ ] Manual check: Ejecutar `/give @p testmod:ruby 1` en la consola del servidor headless y confirmar el registro en el log.
+- [x] Manual check: Ejecutar `/give @p testmod:ruby 1` en la consola del servidor headless y confirmar el registro en el log.
 
 **Dependencies:** Task 4.2
 
@@ -400,12 +400,12 @@
 **Description:** Configurar el soporte de compilación para la plataforma Windows x86_64 (`x86_64-pc-windows-msvc` / `gnu`) tanto para el loader (`redox_mc_loader.dll`) como para los mods (`.dll`). Garantizar que la capa `redox-mc-abi`, los shims JNI y el linker generen binarios nativos válidos para Windows antes de implementar los bloques y assets (Tarea 5.3) y el hot-reload (Fase 7).
 
 **Acceptance criteria:**
-- [ ] `redox-mc-loader` y `test-mod` compilan exitosamente para `x86_64-pc-windows-msvc` (o mingw-w64).
-- [ ] Los símbolos de exportación JVMTI (`Agent_OnLoad`) y JNI se exportan correctamente sin decoraciones de nombre incorrectas.
-- [ ] `redox-mc-abi` valida layouts de tipos compatibles con la ABI de Windows de 64 bits.
+- [x] `redox-mc-loader` y `test-mod` compilan exitosamente para `x86_64-pc-windows-msvc` (o mingw-w64).
+- [x] Los símbolos de exportación JVMTI (`Agent_OnLoad`) y JNI se exportan correctamente sin decoraciones de nombre incorrectas.
+- [x] `redox-mc-abi` valida layouts de tipos compatibles con la ABI de Windows de 64 bits.
 
 **Verification:**
-- [ ] Build succeeds: `cargo build --target x86_64-pc-windows-gnu -p redox-mc-loader -p test-mod` (o cross/cargo clippy para Windows).
+- [x] Build succeeds: `cargo build --target x86_64-pc-windows-gnu -p redox-mc-loader -p test-mod` (o cross/cargo clippy para Windows).
 
 **Dependencies:** Task 2.1
 
@@ -415,6 +415,14 @@
 - `redox-mc-abi/src/lib.rs`
 
 **Estimated scope:** Medium | **Effort:** M (2-3 días)
+
+---
+
+## Checkpoint: Ítems y Windows
+- [x] Ítems personalizados declarados en Rust e instanciados como `GenericRustItem` en `BuiltInRegistries.ITEM`.
+- [x] Hash determinista de contenido de registros calculado para verificación de red y handshake.
+- [x] Servidor headless valida `/give @p testmod:ruby 5` sin VerifyError ni excepciones de intrusive holders.
+- [x] Compilación cruzada para Windows x86_64 (`redox_mc_loader.dll`, `test_mod.dll`) verificada con símbolos limpios.
 
 ---
 

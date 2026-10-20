@@ -38,6 +38,13 @@ impl fmt::Display for AbiVersion {
     }
 }
 
+/// Item behavior flag: custom right-click in air interaction (`use`).
+pub const ITEM_FLAG_HAS_USE: u32 = 1 << 0;
+/// Item behavior flag: custom right-click on block interaction (`useOn`).
+pub const ITEM_FLAG_HAS_USE_ON: u32 = 1 << 1;
+/// Item behavior flag: custom finish consuming/using interaction.
+pub const ITEM_FLAG_HAS_FINISH_USING: u32 = 1 << 2;
+
 /// Standard status code returned by FFI calls.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

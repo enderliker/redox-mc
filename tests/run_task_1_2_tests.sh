@@ -135,7 +135,15 @@ echo "${MOD_SERVER_OUTPUT}" | grep "Dispatching Bootstrap.bootStrap() hook to 1 
 echo "${MOD_SERVER_OUTPUT}" | grep "Hook received: Bootstrap.bootStrap() entered! Game is bootstrapping vanilla registries."
 echo "${MOD_SERVER_OUTPUT}" | grep "Dispatching BuiltInRegistries.freeze() hook to 1 loaded mod(s)..."
 echo "${MOD_SERVER_OUTPUT}" | grep "Hook received: BuiltInRegistries.freeze()! Registries open for custom content."
-echo "[TEST] PASS: Vertical slice fully operational! Native Rust mod discovered, loaded, and executed inside Minecraft."
+echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom item: 'testmod:ruby'"
+echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom item into BuiltInRegistries.ITEM: 'testmod:ruby'"
+echo "${MOD_SERVER_OUTPUT}" | grep "Content registration complete: 1 custom item(s) registered. Registry Content Hash:"
+echo "${MOD_SERVER_OUTPUT}" | grep "BuiltInRegistries status: sealed (frozen=true, item_count=1659)."
+echo "[TEST] PASS: Vertical slice fully operational! Native Rust mod discovered, loaded, item registered into BuiltInRegistries, and executed inside Minecraft."
+
+echo ""
+echo "=== Running Test 6: Task 4.3 Headless Server Item Validation (Console Commands) ==="
+python3 "${ROOT_DIR}/tests/test_headless_item.py"
 
 echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"

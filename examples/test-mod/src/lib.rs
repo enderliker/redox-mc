@@ -57,7 +57,20 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
     println!(
         "[test-mod] Hook received: BuiltInRegistries.freeze()! Registries open for custom content."
     );
+    let ruby = redox_mc_api::item::ItemDefinition::new("testmod:ruby")
+        .max_stack_size(64)
+        .fire_resistant(true)
+        .has_use(true);
+    redox_mc_api::item::register_item(ruby);
+    println!("[test-mod] Registered custom item: 'testmod:ruby'");
     FfiStatus::Success
+}
+
+#[redox_export]
+pub fn redox_mod_on_item_use(item_id: FfiStr, hand: i32) -> i32 {
+    let id = unsafe { item_id.as_str().unwrap_or("") };
+    println!("[test-mod] Custom item used: '{}' (hand={})", id, hand);
+    1 // SUCCESS
 }
 
 #[redox_export]

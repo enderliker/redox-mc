@@ -2,6 +2,11 @@ package net.redoxmc.bridge.item;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
@@ -110,6 +115,27 @@ public class GenericRustItem extends Item {
             default:
                 return fallback != null ? fallback : InteractionResult.PASS;
         }
+    }
+
+    /**
+     * Factory and registration helper to register a GenericRustItem into BuiltInRegistries.ITEM.
+     * Must be called while BuiltInRegistries is open (e.g. during onRegisterContent).
+     */
+    public static GenericRustItem register(String itemId, int maxStackSize, int durability, boolean fireResistant, int behaviorFlags) {
+        ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, Identifier.parse(itemId));
+        Item.Properties props = new Item.Properties().setId(key);
+        if (maxStackSize > 0) {
+            props.stacksTo(maxStackSize);
+        }
+        if (durability > 0) {
+            props.durability(durability);
+        }
+        if (fireResistant) {
+            props.fireResistant();
+        }
+        GenericRustItem item = new GenericRustItem(props, itemId, behaviorFlags);
+        Registry.register(BuiltInRegistries.ITEM, key, item);
+        return item;
     }
 
     /**

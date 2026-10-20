@@ -47,6 +47,10 @@ pub struct LoadedMod {
             redox_mc_abi::types::FfiStr,
         ) -> redox_mc_abi::types::FfiResult<bool>,
     >,
+    pub on_item_use_fn: Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32) -> i32>,
+    pub on_item_use_on_fn:
+        Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32, i32, i32) -> i32>,
+    pub on_item_finish_using_fn: Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr)>,
 }
 
 pub struct ModManager {
@@ -286,6 +290,32 @@ impl ModManager {
                 chat_symbol.ok().map(|s| *s)
             };
 
+            // Resolve item interaction callbacks
+            type ItemUseFn = unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32) -> i32;
+            let on_item_use_fn = unsafe {
+                boxed_lib
+                    .get::<ItemUseFn>(b"redox_mod_on_item_use\0")
+                    .ok()
+                    .map(|s| *s)
+            };
+
+            type ItemUseOnFn =
+                unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32, i32, i32) -> i32;
+            let on_item_use_on_fn = unsafe {
+                boxed_lib
+                    .get::<ItemUseOnFn>(b"redox_mod_on_item_use_on\0")
+                    .ok()
+                    .map(|s| *s)
+            };
+
+            type ItemFinishFn = unsafe extern "C" fn(redox_mc_abi::types::FfiStr);
+            let on_item_finish_using_fn = unsafe {
+                boxed_lib
+                    .get::<ItemFinishFn>(b"redox_mod_on_item_finish_using\0")
+                    .ok()
+                    .map(|s| *s)
+            };
+
             self.loaded_mods.push(LoadedMod {
                 manifest,
                 binary_path: candidate.binary_path.clone(),
@@ -294,6 +324,9 @@ impl ModManager {
                 on_register_content_fn,
                 on_server_tick_fn,
                 on_server_chat_fn,
+                on_item_use_fn,
+                on_item_use_on_fn,
+                on_item_finish_using_fn,
             });
         }
 
@@ -404,6 +437,79 @@ impl ModManager {
     pub fn loaded_mods(&self) -> &[LoadedMod] {
         &self.loaded_mods
     }
+
+    /// Collects all registered item definitions from loaded mods in deterministic order.
+    pub fn collect_registered_items(&self) -> Vec<crate::registry::RegisteredItemEntry> {
+        type GetItemCountFn = unsafe extern "C" fn() -> usize;
+        type GetItemAtFn = unsafe extern "C" fn(
+            usize,
+            *mut redox_mc_abi::types::FfiStr,
+            *mut u32,
+            *mut u32,
+            *mut bool,
+            *mut u32,
+        ) -> redox_mc_abi::types::FfiStatus;
+
+        let mut items = Vec::new();
+
+        for loaded in &self.loaded_mods {
+            let get_count_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetItemCountFn>(b"redox_mod_get_item_count\0")
+            };
+            let get_at_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetItemAtFn>(b"redox_mod_get_item_at\0")
+            };
+
+            if let (Ok(get_count), Ok(get_at)) = (get_count_sym, get_at_sym) {
+                let count = unsafe { get_count() };
+                for i in 0..count {
+                    let mut ffi_id = redox_mc_abi::types::FfiStr::EMPTY;
+                    let mut max_stack = 64u32;
+                    let mut durability = 0u32;
+                    let mut fire_resistant = false;
+                    let mut behavior_flags = 0u32;
+
+                    let status = unsafe {
+                        get_at(
+                            i,
+                            &mut ffi_id,
+                            &mut max_stack,
+                            &mut durability,
+                            &mut fire_resistant,
+                            &mut behavior_flags,
+                        )
+                    };
+
+                    if status.is_success() {
+                        if let Ok(id_str) = unsafe { ffi_id.as_str() } {
+                            items.push(crate::registry::RegisteredItemEntry {
+                                id: id_str.to_string(),
+                                max_stack_size: max_stack,
+                                durability: if durability > 0 {
+                                    Some(durability)
+                                } else {
+                                    None
+                                },
+                                fire_resistant,
+                                behavior_flags,
+                            });
+                        }
+                    } else {
+                        eprintln!(
+                            "[redox-mc-loader] ERROR: Mod '{}' redox_mod_get_item_at({}) returned status {:?}",
+                            loaded.manifest.id, i, status
+                        );
+                    }
+                }
+            }
+        }
+
+        items
+    }
 }
 
 impl Default for ModManager {
@@ -435,6 +541,16 @@ static MOD_MANAGER: Mutex<Option<ModManager>> = Mutex::new(None);
 
 pub fn get_or_init_manager() -> &'static Mutex<Option<ModManager>> {
     &MOD_MANAGER
+}
+
+/// Collects all registered item definitions from loaded mods in deterministic order.
+pub fn collect_registered_items() -> Vec<crate::registry::RegisteredItemEntry> {
+    let guard = MOD_MANAGER.lock().unwrap();
+    if let Some(manager) = guard.as_ref() {
+        manager.collect_registered_items()
+    } else {
+        Vec::new()
+    }
 }
 
 /// Called from RedoxBridge.onBootstrapEntry()
@@ -596,30 +712,78 @@ pub fn on_server_chat(player_name: &str, message: &str) -> bool {
 
 /// Dispatches item use to loaded mods.
 /// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
-pub fn on_item_use(item_id: &str, _hand: i32) -> i32 {
-    println!(
-        "[redox-mc-loader] Native on_item_use: item_id='{}'",
-        item_id
-    );
+pub fn on_item_use(item_id: &str, hand: i32) -> i32 {
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(item_id);
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .filter_map(|m| m.on_item_use_fn.map(|cb| (m.manifest.id.clone(), cb)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    for (_id, cb) in callbacks {
+        let res = unsafe { cb(ffi_id, hand) };
+        if res != 0 {
+            return res;
+        }
+    }
     0
 }
 
 /// Dispatches item useOn to loaded mods.
 /// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
-pub fn on_item_use_on(item_id: &str, _x: i32, _y: i32, _z: i32, _face: i32, _hand: i32) -> i32 {
-    println!(
-        "[redox-mc-loader] Native on_item_use_on: item_id='{}'",
-        item_id
-    );
+pub fn on_item_use_on(item_id: &str, x: i32, y: i32, z: i32, face: i32, hand: i32) -> i32 {
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(item_id);
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .filter_map(|m| m.on_item_use_on_fn.map(|cb| (m.manifest.id.clone(), cb)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    for (_id, cb) in callbacks {
+        let res = unsafe { cb(ffi_id, x, y, z, face, hand) };
+        if res != 0 {
+            return res;
+        }
+    }
     0
 }
 
 /// Dispatches item finish using to loaded mods.
 pub fn on_item_finish_using(item_id: &str) {
-    println!(
-        "[redox-mc-loader] Native on_item_finish_using: item_id='{}'",
-        item_id
-    );
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(item_id);
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .filter_map(|m| {
+                    m.on_item_finish_using_fn
+                        .map(|cb| (m.manifest.id.clone(), cb))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    for (_id, cb) in callbacks {
+        unsafe { cb(ffi_id) };
+    }
 }
 
 fn find_binary_in_dir(dir: &Path) -> Option<PathBuf> {

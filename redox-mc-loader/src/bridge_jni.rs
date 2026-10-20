@@ -50,6 +50,15 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
     let m_item_finish = CString::new("onItemFinishUsing").unwrap();
     let sig_item_finish = CString::new("(Ljava/lang/String;)V").unwrap();
 
+    let m_block_use = CString::new("onBlockUseWithoutItem").unwrap();
+    let sig_block_use = CString::new("(Ljava/lang/String;IIII)I").unwrap();
+
+    let m_block_step = CString::new("onBlockStepOn").unwrap();
+    let sig_block_step = CString::new("(Ljava/lang/String;III)V").unwrap();
+
+    let m_block_destroy = CString::new("onBlockDestroy").unwrap();
+    let sig_block_destroy = CString::new("(Ljava/lang/String;III)V").unwrap();
+
     let m_get_vresource = CString::new("getVirtualResource").unwrap();
     let sig_get_vresource =
         CString::new("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[B").unwrap();
@@ -110,6 +119,21 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_item_finish.as_ptr() as *mut _,
             signature: sig_item_finish.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onItemFinishUsing as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_block_use.as_ptr() as *mut _,
+            signature: sig_block_use.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onBlockUseWithoutItem as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_block_step.as_ptr() as *mut _,
+            signature: sig_block_step.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onBlockStepOn as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_block_destroy.as_ptr() as *mut _,
+            signature: sig_block_destroy.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onBlockDestroy as *mut _,
         },
         jni::JNINativeMethod {
             name: m_get_vresource.as_ptr() as *mut _,
@@ -388,6 +412,99 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onItemFinishUs
         let item_id = CStr::from_ptr(chars).to_string_lossy();
         crate::events::dispatch_item_finish_using(&item_id);
         ((**env).ReleaseStringUTFChars)(env, item_str, chars);
+    }));
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onBlockUseWithoutItem(String blockId, int x, int y, int z, int direction)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string reference.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBlockUseWithoutItem(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    block_str: jni::jstring,
+    x: jni::jint,
+    y: jni::jint,
+    z: jni::jint,
+    direction: jni::jint,
+) -> jni::jint {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if block_str.is_null() {
+            return 0;
+        }
+        let chars = ((**env).GetStringUTFChars)(env, block_str, std::ptr::null_mut());
+        if chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return 0;
+        }
+        let block_id = CStr::from_ptr(chars).to_string_lossy();
+        let res = crate::events::dispatch_block_use_without_item(&block_id, x, y, z, direction);
+        ((**env).ReleaseStringUTFChars)(env, block_str, chars);
+        res
+    }));
+    result.unwrap_or(0)
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onBlockStepOn(String blockId, int x, int y, int z)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string reference.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBlockStepOn(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    block_str: jni::jstring,
+    x: jni::jint,
+    y: jni::jint,
+    z: jni::jint,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if block_str.is_null() {
+            return;
+        }
+        let chars = ((**env).GetStringUTFChars)(env, block_str, std::ptr::null_mut());
+        if chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return;
+        }
+        let block_id = CStr::from_ptr(chars).to_string_lossy();
+        crate::events::dispatch_block_step_on(&block_id, x, y, z);
+        ((**env).ReleaseStringUTFChars)(env, block_str, chars);
+    }));
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onBlockDestroy(String blockId, int x, int y, int z)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string reference.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBlockDestroy(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    block_str: jni::jstring,
+    x: jni::jint,
+    y: jni::jint,
+    z: jni::jint,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if block_str.is_null() {
+            return;
+        }
+        let chars = ((**env).GetStringUTFChars)(env, block_str, std::ptr::null_mut());
+        if chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return;
+        }
+        let block_id = CStr::from_ptr(chars).to_string_lossy();
+        crate::events::dispatch_block_destroy(&block_id, x, y, z);
+        ((**env).ReleaseStringUTFChars)(env, block_str, chars);
     }));
 }
 

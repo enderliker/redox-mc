@@ -137,9 +137,11 @@ echo "${MOD_SERVER_OUTPUT}" | grep "Hook received: Bootstrap.bootStrap() entered
 echo "${MOD_SERVER_OUTPUT}" | grep "Dispatching BuiltInRegistries.freeze() hook to 1 loaded mod(s)..."
 echo "${MOD_SERVER_OUTPUT}" | grep "Hook received: BuiltInRegistries.freeze()! Registries open for custom content."
 echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom item: 'testmod:ruby'"
+echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom block: 'testmod:ruby_block'"
+echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom block into BuiltInRegistries.BLOCK: 'testmod:ruby_block'"
 echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom item into BuiltInRegistries.ITEM: 'testmod:ruby'"
-echo "${MOD_SERVER_OUTPUT}" | grep "Content registration complete: 1 custom item(s) registered. Registry Content Hash:"
-echo "${MOD_SERVER_OUTPUT}" | grep "BuiltInRegistries status: sealed (frozen=true, item_count=1659)."
+echo "${MOD_SERVER_OUTPUT}" | grep "Content registration complete: 1 custom item(s), 1 custom block(s) registered. Registry Content Hash:"
+echo "${MOD_SERVER_OUTPUT}" | grep "BuiltInRegistries status: sealed (frozen=true, item_count=1660)."
 echo "[TEST] PASS: Vertical slice fully operational! Native Rust mod discovered, loaded, item registered into BuiltInRegistries, and executed inside Minecraft."
 
 echo ""

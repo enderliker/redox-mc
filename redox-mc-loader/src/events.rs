@@ -29,3 +29,25 @@ pub fn dispatch_item_use_on(item_id: &str, x: i32, y: i32, z: i32, face: i32, ha
 pub fn dispatch_item_finish_using(item_id: &str) {
     crate::mod_loader::on_item_finish_using(item_id);
 }
+
+/// Dispatches a block useWithoutItem event.
+/// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
+pub fn dispatch_block_use_without_item(
+    block_id: &str,
+    x: i32,
+    y: i32,
+    z: i32,
+    direction: i32,
+) -> i32 {
+    crate::mod_loader::on_block_use_without_item(block_id, x, y, z, direction)
+}
+
+/// Dispatches a block stepOn event.
+pub fn dispatch_block_step_on(block_id: &str, x: i32, y: i32, z: i32) {
+    crate::mod_loader::on_block_step_on(block_id, x, y, z);
+}
+
+/// Dispatches a block destroy event.
+pub fn dispatch_block_destroy(block_id: &str, x: i32, y: i32, z: i32) {
+    crate::mod_loader::on_block_destroy(block_id, x, y, z);
+}

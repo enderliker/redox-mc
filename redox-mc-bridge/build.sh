@@ -48,6 +48,7 @@ javac -cp "${CORE_JAR_NATIVE}${CP_SEP}${MC_SERVER_JAR_NATIVE}${LIB_CP}" -d "${BU
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/game/TestMinecraftSavedData.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/event/ServerEvents.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/item/GenericRustItem.java" \
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/block/GenericRedoxBlock.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackResources.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackRepositorySource.java"
 

@@ -461,18 +461,21 @@
 3. Crear el `BlockItem` asociado en `BuiltInRegistries.ITEM` y vincularlo en `Item.BY_BLOCK`.
 
 **Acceptance criteria:**
-- [ ] El bloque se registra en `BuiltInRegistries.BLOCK` y sus estados en la paleta global `BLOCK_STATE_REGISTRY`.
-- [ ] `Block.getId(state)` retorna un ID mayor que cero.
-- [ ] El `BlockItem` permite colocar y romper el bloque en el mundo.
+- [x] El bloque se registra en `BuiltInRegistries.BLOCK` y sus estados en la paleta global `BLOCK_STATE_REGISTRY`.
+- [x] `Block.getId(state)` retorna un ID mayor que cero.
+- [x] El `BlockItem` permite colocar y romper el bloque en el mundo.
 
 **Verification:**
-- [ ] Manual check: Colocar el bloque en el mundo mediante comando `/setblock ~ ~ ~ testmod:ruby_block` en servidor headless.
+- [x] Manual check: Colocar el bloque en el mundo mediante comando `/setblock 0 64 0 testmod:ruby_block` en servidor headless verificado con "Changed the block at 0, 64, 0" en `./tests/run_task_1_2_tests.sh`.
 
 **Dependencies:** Task 5.1, Task 4.2
 
 **Files likely touched:**
 - `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/block/GenericRedoxBlock.java`
 - `redox-mc-loader/src/registry/block.rs`
+- `redox-mc-api/src/block.rs`
+- `redox-mc-loader/src/registry/hash.rs`
+- `examples/test-mod/src/lib.rs`
 
 **Estimated scope:** Large | **Effort:** L (3-4 días)
 

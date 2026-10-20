@@ -69,6 +69,10 @@ fn test_dynamic_mod_discovery_and_loading() {
         loaded.on_server_chat_fn.is_some(),
         "redox_mod_on_server_chat symbol must be resolved"
     );
+    assert!(
+        loaded.on_block_use_without_item_fn.is_some(),
+        "redox_mod_on_block_use_without_item symbol must be resolved"
+    );
 
     // 4. Test lifecycle and gameplay hook dispatches
     manager.dispatch_bootstrap();

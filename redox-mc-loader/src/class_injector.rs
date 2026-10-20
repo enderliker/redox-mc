@@ -198,7 +198,15 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         generic_item_name
     );
 
-    // 6. Virtual pack resources: VirtualModPackResources
+    // 6. Generic block bridge: GenericRedoxBlock
+    let generic_block_name = "net/redoxmc/bridge/block/GenericRedoxBlock";
+    define_class(env, generic_block_name, loader, GENERIC_REDOX_BLOCK_BYTES)?;
+    println!(
+        "[redox-mc-loader] Defined generic block class: {}",
+        generic_block_name
+    );
+
+    // 7. Virtual pack resources: VirtualModPackResources
     let virtual_pack_name = "net/redoxmc/bridge/resource/VirtualModPackResources";
     define_class(
         env,
@@ -211,7 +219,7 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         virtual_pack_name
     );
 
-    // 7. Virtual pack repository source inner supplier: VirtualModPackRepositorySource$1
+    // 8. Virtual pack repository source inner supplier: VirtualModPackRepositorySource$1
     let repo_source_inner_name = "net/redoxmc/bridge/resource/VirtualModPackRepositorySource$1";
     define_class(
         env,
@@ -224,7 +232,7 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         repo_source_inner_name
     );
 
-    // 8. Virtual pack repository source: VirtualModPackRepositorySource
+    // 9. Virtual pack repository source: VirtualModPackRepositorySource
     let repo_source_name = "net/redoxmc/bridge/resource/VirtualModPackRepositorySource";
     define_class(
         env,
@@ -255,6 +263,11 @@ pub const TEST_MINECRAFT_SAVEDDATA_BYTES: &[u8] = include_bytes!(concat!(
 pub const GENERIC_RUST_ITEM_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/item/GenericRustItem.class"
+));
+
+pub const GENERIC_REDOX_BLOCK_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/block/GenericRedoxBlock.class"
 ));
 
 pub const VIRTUAL_MOD_PACK_RESOURCES_BYTES: &[u8] = include_bytes!(concat!(
@@ -331,6 +344,74 @@ pub unsafe fn verify_real_minecraft_subclass(env: *mut jni::JNIEnv) -> Result<St
         ((**env).ExceptionDescribe)(env);
         ((**env).ExceptionClear)(env);
         return Err("Failed to execute getTestStatus".into());
+    }
+
+    let c_chars = ((**env).GetStringUTFChars)(env, j_res, std::ptr::null_mut());
+    let res_str = std::ffi::CStr::from_ptr(c_chars)
+        .to_string_lossy()
+        .to_string();
+    ((**env).ReleaseStringUTFChars)(env, j_res, c_chars);
+
+    println!("[redox-mc-loader] [VERIFY] {}", res_str);
+    Ok(res_str)
+}
+
+/// Verifies that GenericRedoxBlock was defined, linked, and can be instantiated
+/// in the captured game classloader without NoClassDefFoundError.
+///
+/// # Safety
+/// `env` must be a valid pointer to a live JNIEnv for the calling thread.
+pub unsafe fn verify_generic_redox_block(env: *mut jni::JNIEnv) -> Result<String, String> {
+    define_game_bridge_classes(env)?;
+
+    let loader = get_game_class_loader();
+    if loader.is_null() {
+        return Err("Game classloader is null".into());
+    }
+
+    let cl_class = ((**env).GetObjectClass)(env, loader);
+    let load_class_name = CString::new("loadClass").unwrap();
+    let load_class_sig = CString::new("(Ljava/lang/String;)Ljava/lang/Class;").unwrap();
+    let load_class_mid = ((**env).GetMethodID)(
+        env,
+        cl_class,
+        load_class_name.as_ptr(),
+        load_class_sig.as_ptr(),
+    );
+    if load_class_mid.is_null() {
+        return Err("Failed to get loadClass method ID".into());
+    }
+
+    let class_name_str = CString::new("net.redoxmc.bridge.block.GenericRedoxBlock").unwrap();
+    let j_name = ((**env).NewStringUTF)(env, class_name_str.as_ptr());
+    let block_class =
+        ((**env).CallObjectMethod)(env, loader, load_class_mid, j_name) as jni::jclass;
+
+    if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE || block_class.is_null() {
+        if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+            ((**env).ExceptionClear)(env);
+        }
+        return Err("Failed to load GenericRedoxBlock class".into());
+    }
+
+    let verify_name = CString::new("verifyBlockInstantiation").unwrap();
+    let verify_sig = CString::new("()Ljava/lang/String;").unwrap();
+    let verify_mid =
+        ((**env).GetStaticMethodID)(env, block_class, verify_name.as_ptr(), verify_sig.as_ptr());
+    if verify_mid.is_null() {
+        if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+            ((**env).ExceptionClear)(env);
+        }
+        return Err("Failed to find verifyBlockInstantiation method".into());
+    }
+
+    let j_res = ((**env).CallStaticObjectMethod)(env, block_class, verify_mid) as jni::jstring;
+    if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE || j_res.is_null() {
+        if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+            ((**env).ExceptionDescribe)(env);
+            ((**env).ExceptionClear)(env);
+        }
+        return Err("Exception during verifyBlockInstantiation".into());
     }
 
     let c_chars = ((**env).GetStringUTFChars)(env, j_res, std::ptr::null_mut());

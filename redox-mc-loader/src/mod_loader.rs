@@ -51,6 +51,12 @@ pub struct LoadedMod {
     pub on_item_use_on_fn:
         Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32, i32, i32) -> i32>,
     pub on_item_finish_using_fn: Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr)>,
+    pub on_block_use_without_item_fn:
+        Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32, i32) -> i32>,
+    pub on_block_step_on_fn:
+        Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32)>,
+    pub on_block_destroy_fn:
+        Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32)>,
 }
 
 pub struct ModManager {
@@ -316,6 +322,32 @@ impl ModManager {
                     .map(|s| *s)
             };
 
+            // Resolve block interaction callbacks
+            type BlockUseFn =
+                unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32, i32) -> i32;
+            let on_block_use_without_item_fn = unsafe {
+                boxed_lib
+                    .get::<BlockUseFn>(b"redox_mod_on_block_use_without_item\0")
+                    .ok()
+                    .map(|s| *s)
+            };
+
+            type BlockStepFn = unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32);
+            let on_block_step_on_fn = unsafe {
+                boxed_lib
+                    .get::<BlockStepFn>(b"redox_mod_on_block_step_on\0")
+                    .ok()
+                    .map(|s| *s)
+            };
+
+            type BlockDestroyFn = unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32);
+            let on_block_destroy_fn = unsafe {
+                boxed_lib
+                    .get::<BlockDestroyFn>(b"redox_mod_on_block_destroy\0")
+                    .ok()
+                    .map(|s| *s)
+            };
+
             self.loaded_mods.push(LoadedMod {
                 manifest,
                 binary_path: candidate.binary_path.clone(),
@@ -327,6 +359,9 @@ impl ModManager {
                 on_item_use_fn,
                 on_item_use_on_fn,
                 on_item_finish_using_fn,
+                on_block_use_without_item_fn,
+                on_block_step_on_fn,
+                on_block_destroy_fn,
             });
         }
 
@@ -511,6 +546,83 @@ impl ModManager {
         items
     }
 
+    /// Collects all registered block definitions from loaded mods in deterministic order.
+    pub fn collect_registered_blocks(&self) -> Vec<crate::registry::RegisteredBlockEntry> {
+        type GetBlockCountFn = unsafe extern "C" fn() -> usize;
+        type GetBlockAtFn = unsafe extern "C" fn(
+            usize,
+            *mut redox_mc_abi::types::FfiStr,
+            *mut f32,
+            *mut f32,
+            *mut bool,
+            *mut bool,
+            *mut u32,
+            *mut bool,
+        ) -> redox_mc_abi::types::FfiStatus;
+
+        let mut blocks = Vec::new();
+
+        for loaded in &self.loaded_mods {
+            let get_count_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetBlockCountFn>(b"redox_mod_get_block_count\0")
+            };
+            let get_at_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetBlockAtFn>(b"redox_mod_get_block_at\0")
+            };
+
+            if let (Ok(get_count), Ok(get_at)) = (get_count_sym, get_at_sym) {
+                let count = unsafe { get_count() };
+                for i in 0..count {
+                    let mut ffi_id = redox_mc_abi::types::FfiStr::EMPTY;
+                    let mut destroy_time = 1.5f32;
+                    let mut explosion_resistance = 6.0f32;
+                    let mut requires_tool = false;
+                    let mut no_collision = false;
+                    let mut behavior_flags = 0u32;
+                    let mut has_item = true;
+
+                    let status = unsafe {
+                        get_at(
+                            i,
+                            &mut ffi_id,
+                            &mut destroy_time,
+                            &mut explosion_resistance,
+                            &mut requires_tool,
+                            &mut no_collision,
+                            &mut behavior_flags,
+                            &mut has_item,
+                        )
+                    };
+
+                    if status.is_success() {
+                        if let Ok(id_str) = unsafe { ffi_id.as_str() } {
+                            blocks.push(crate::registry::RegisteredBlockEntry {
+                                id: id_str.to_string(),
+                                destroy_time,
+                                explosion_resistance,
+                                requires_tool,
+                                no_collision,
+                                behavior_flags,
+                                has_item,
+                            });
+                        }
+                    } else {
+                        eprintln!(
+                            "[redox-mc-loader] ERROR: Mod '{}' redox_mod_get_block_at({}) returned status {:?}",
+                            loaded.manifest.id, i, status
+                        );
+                    }
+                }
+            }
+        }
+
+        blocks
+    }
+
     /// Collects and registers all virtual resources from loaded mods in deterministic order.
     pub fn collect_registered_resources(&self) {
         type GetResourceCountFn = unsafe extern "C" fn() -> usize;
@@ -619,6 +731,16 @@ pub fn collect_registered_items() -> Vec<crate::registry::RegisteredItemEntry> {
     let guard = MOD_MANAGER.lock().unwrap();
     if let Some(manager) = guard.as_ref() {
         manager.collect_registered_items()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Collects all registered block definitions from loaded mods in deterministic order.
+pub fn collect_registered_blocks() -> Vec<crate::registry::RegisteredBlockEntry> {
+    let guard = MOD_MANAGER.lock().unwrap();
+    if let Some(manager) = guard.as_ref() {
+        manager.collect_registered_blocks()
     } else {
         Vec::new()
     }
@@ -862,6 +984,77 @@ pub fn on_item_finish_using(item_id: &str) {
 
     for (_id, cb) in callbacks {
         unsafe { cb(ffi_id) };
+    }
+}
+
+/// Dispatches block useWithoutItem to loaded mods.
+/// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
+pub fn on_block_use_without_item(block_id: &str, x: i32, y: i32, z: i32, direction: i32) -> i32 {
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(block_id);
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .filter_map(|m| {
+                    m.on_block_use_without_item_fn
+                        .map(|cb| (m.manifest.id.clone(), cb))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    for (_id, cb) in callbacks {
+        let res = unsafe { cb(ffi_id, x, y, z, direction) };
+        if res != 0 {
+            return res;
+        }
+    }
+    0
+}
+
+/// Dispatches block stepOn to loaded mods.
+pub fn on_block_step_on(block_id: &str, x: i32, y: i32, z: i32) {
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(block_id);
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .filter_map(|m| m.on_block_step_on_fn.map(|cb| (m.manifest.id.clone(), cb)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    for (_id, cb) in callbacks {
+        unsafe { cb(ffi_id, x, y, z) };
+    }
+}
+
+/// Dispatches block destroy to loaded mods.
+pub fn on_block_destroy(block_id: &str, x: i32, y: i32, z: i32) {
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(block_id);
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .filter_map(|m| m.on_block_destroy_fn.map(|cb| (m.manifest.id.clone(), cb)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    for (_id, cb) in callbacks {
+        unsafe { cb(ffi_id, x, y, z) };
     }
 }
 

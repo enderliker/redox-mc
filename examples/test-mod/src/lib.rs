@@ -64,6 +64,13 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
     redox_mc_api::item::register_item(ruby);
     println!("[test-mod] Registered custom item: 'testmod:ruby'");
 
+    let ruby_block = redox_mc_api::block::BlockDefinition::new("testmod:ruby_block")
+        .strength(3.0, 6.0)
+        .requires_tool(true)
+        .has_use_without_item(true);
+    redox_mc_api::block::register_block(ruby_block);
+    println!("[test-mod] Registered custom block: 'testmod:ruby_block'");
+
     // Register in-memory virtual recipe for testmod:ruby
     redox_mc_api::resource::register_data_resource(
         "testmod",
@@ -109,6 +116,22 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
 pub fn redox_mod_on_item_use(item_id: FfiStr, hand: i32) -> i32 {
     let id = unsafe { item_id.as_str().unwrap_or("") };
     println!("[test-mod] Custom item used: '{}' (hand={})", id, hand);
+    1 // SUCCESS
+}
+
+#[redox_export]
+pub fn redox_mod_on_block_use_without_item(
+    block_id: FfiStr,
+    x: i32,
+    y: i32,
+    z: i32,
+    direction: i32,
+) -> i32 {
+    let id = unsafe { block_id.as_str().unwrap_or("") };
+    println!(
+        "[test-mod] Custom block interacted without item: '{}' at ({}, {}, {}) direction={}",
+        id, x, y, z, direction
+    );
     1 // SUCCESS
 }
 

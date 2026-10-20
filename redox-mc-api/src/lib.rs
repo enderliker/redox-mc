@@ -1,10 +1,15 @@
 //! Public API for developing native Redox-MC mods in Rust.
 
+pub mod block;
 pub mod event;
 pub mod item;
 pub mod macros;
 pub mod resource;
 
+pub use block::{
+    clear_registered_blocks, get_registered_blocks, register_block, BlockDefinition,
+    FLAG_HAS_DESTROY, FLAG_HAS_STEP_ON, FLAG_HAS_USE_WITHOUT_ITEM,
+};
 pub use event::{CancellableEvent, Event, EventBus, EventPriority, EventResult};
 pub use item::{
     clear_registered_items, get_registered_items, register_item, ItemDefinition,

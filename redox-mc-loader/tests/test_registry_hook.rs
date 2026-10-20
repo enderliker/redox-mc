@@ -199,5 +199,17 @@ fn test_mod_manager_dispatches_register_content_to_loaded_mods() {
     // 4. Dispatch register_content and ensure no panics/errors
     manager.dispatch_register_content();
 
+    let items = manager.collect_registered_items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "testmod:ruby");
+
+    let blocks = manager.collect_registered_blocks();
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].id, "testmod:ruby_block");
+    assert_eq!(blocks[0].destroy_time, 3.0);
+    assert_eq!(blocks[0].explosion_resistance, 6.0);
+    assert!(blocks[0].requires_tool);
+    assert!(blocks[0].has_item);
+
     let _ = fs::remove_dir_all(&temp_dir);
 }

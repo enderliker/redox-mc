@@ -62,6 +62,22 @@ public final class RedoxBridge {
     public static native void onItemFinishUsing(String itemId);
 
     /**
+     * Hook called when a player interacts with a block without a held item.
+     * Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
+     */
+    public static native int onBlockUseWithoutItem(String blockId, int x, int y, int z, int direction);
+
+    /**
+     * Hook called when an entity steps onto a block.
+     */
+    public static native void onBlockStepOn(String blockId, int x, int y, int z);
+
+    /**
+     * Hook called when a block is destroyed.
+     */
+    public static native void onBlockDestroy(String blockId, int x, int y, int z);
+
+    /**
      * Retrieves a virtual resource from the native loader.
      *
      * @param type "assets" (CLIENT_RESOURCES) or "data" (SERVER_DATA)

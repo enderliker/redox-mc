@@ -188,6 +188,21 @@ def main():
             proc.stdin.flush()
             time.sleep(1)
 
+            # Force-load chunk (0, 0) so setblock can place blocks
+            proc.stdin.write("forceload add 0 0\n")
+            proc.stdin.flush()
+            time.sleep(1)
+
+            # Test 4: Send invalid block setblock command
+            proc.stdin.write("setblock 0 64 0 testmod:invalid_nonexistent_block\n")
+            proc.stdin.flush()
+            time.sleep(1)
+
+            # Test 5: Send valid custom mod block setblock command
+            proc.stdin.write("setblock 0 64 0 testmod:ruby_block\n")
+            proc.stdin.flush()
+            time.sleep(1)
+
             # Stop server
             proc.stdin.write("stop\n")
             proc.stdin.flush()
@@ -208,6 +223,8 @@ def main():
         # Verification assertions
         assert "Registered custom item into BuiltInRegistries.ITEM: 'testmod:ruby'" in full_output, \
             "Expected testmod:ruby to be registered into BuiltInRegistries.ITEM"
+        assert "Registered custom block into BuiltInRegistries.BLOCK: 'testmod:ruby_block'" in full_output, \
+            "Expected testmod:ruby_block to be registered into BuiltInRegistries.BLOCK"
         assert "Unknown item 'testmod:invalid_nonexistent'" in full_output, \
             "Expected server to reject unknown item"
         assert "Unknown item 'testmod:ruby'" not in full_output, \
@@ -216,8 +233,12 @@ def main():
             "Expected give @p testmod:ruby to parse successfully and report 'No player was found'"
         assert "redox_mod_resources" in full_output, \
             "Expected virtual datapack 'redox_mod_resources' to be enabled in datapack list"
+        assert "Unknown block 'testmod:invalid_nonexistent_block'" in full_output or "testmod:invalid_nonexistent_block" in full_output, \
+            "Expected server to reject unknown block"
+        assert "Changed the block at 0, 64, 0" in full_output, \
+            "Expected setblock 0 64 0 testmod:ruby_block to place the block successfully"
 
-        print("\n>>> TASK 4.3 & TASK 5.1 HEADLESS VALIDATION PASSED! <<<")
+        print("\n>>> TASK 4.3, TASK 5.1 & TASK 5.2 HEADLESS VALIDATION PASSED! <<<")
         return 0
 
     finally:

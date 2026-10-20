@@ -1,5 +1,6 @@
 use redox_mc_loader::registry::{
-    compute_registry_hash, RegisteredItemEntry, RegistryHasher, FLAG_HAS_USE, FLAG_HAS_USE_ON,
+    compute_full_registry_hash, compute_registry_hash, RegisteredBlockEntry, RegisteredItemEntry,
+    RegistryHasher, BLOCK_FLAG_HAS_USE_WITHOUT_ITEM, FLAG_HAS_USE, FLAG_HAS_USE_ON,
 };
 
 #[test]
@@ -127,4 +128,72 @@ fn test_incremental_hasher_matches_compute_function() {
     let direct_hex = compute_registry_hash(&items);
 
     assert_eq!(incremental_hex, direct_hex);
+}
+
+#[test]
+fn test_block_registry_hash_determinism_and_sensitivity() {
+    let base_block = RegisteredBlockEntry {
+        id: "testmod:ruby_block".into(),
+        destroy_time: 3.0,
+        explosion_resistance: 6.0,
+        requires_tool: true,
+        no_collision: false,
+        behavior_flags: BLOCK_FLAG_HAS_USE_WITHOUT_ITEM,
+        has_item: true,
+    };
+
+    let items = vec![RegisteredItemEntry {
+        id: "testmod:ruby".into(),
+        max_stack_size: 64,
+        durability: None,
+        fire_resistant: true,
+        behavior_flags: 0,
+    }];
+
+    let hash1 = compute_full_registry_hash(&items, std::slice::from_ref(&base_block));
+    let hash2 = compute_full_registry_hash(&items, std::slice::from_ref(&base_block));
+    assert_eq!(hash1, hash2);
+    assert_eq!(hash1.len(), 64);
+
+    // Differentiate by hardness
+    let diff_destroy = RegisteredBlockEntry {
+        destroy_time: 5.0,
+        ..base_block.clone()
+    };
+    assert_ne!(hash1, compute_full_registry_hash(&items, &[diff_destroy]));
+
+    // Differentiate by resistance
+    let diff_res = RegisteredBlockEntry {
+        explosion_resistance: 12.0,
+        ..base_block.clone()
+    };
+    assert_ne!(hash1, compute_full_registry_hash(&items, &[diff_res]));
+
+    // Differentiate by requires_tool
+    let diff_tool = RegisteredBlockEntry {
+        requires_tool: false,
+        ..base_block.clone()
+    };
+    assert_ne!(hash1, compute_full_registry_hash(&items, &[diff_tool]));
+
+    // Differentiate by no_collision
+    let diff_col = RegisteredBlockEntry {
+        no_collision: true,
+        ..base_block.clone()
+    };
+    assert_ne!(hash1, compute_full_registry_hash(&items, &[diff_col]));
+
+    // Differentiate by behavior_flags
+    let diff_flags = RegisteredBlockEntry {
+        behavior_flags: 0,
+        ..base_block.clone()
+    };
+    assert_ne!(hash1, compute_full_registry_hash(&items, &[diff_flags]));
+
+    // Differentiate by has_item
+    let diff_item = RegisteredBlockEntry {
+        has_item: false,
+        ..base_block
+    };
+    assert_ne!(hash1, compute_full_registry_hash(&items, &[diff_item]));
 }

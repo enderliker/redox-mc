@@ -45,6 +45,13 @@ pub const ITEM_FLAG_HAS_USE_ON: u32 = 1 << 1;
 /// Item behavior flag: custom finish consuming/using interaction.
 pub const ITEM_FLAG_HAS_FINISH_USING: u32 = 1 << 2;
 
+/// Block behavior flag: custom right-click without held item interaction (`useWithoutItem`).
+pub const BLOCK_FLAG_HAS_USE_WITHOUT_ITEM: u32 = 1 << 0;
+/// Block behavior flag: custom entity step on interaction (`stepOn`).
+pub const BLOCK_FLAG_HAS_STEP_ON: u32 = 1 << 1;
+/// Block behavior flag: custom destroy interaction (`destroy`).
+pub const BLOCK_FLAG_HAS_DESTROY: u32 = 1 << 2;
+
 /// Standard status code returned by FFI calls.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

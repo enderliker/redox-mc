@@ -187,11 +187,22 @@ pub unsafe fn handle_on_register_content(env: *mut jni::JNIEnv) {
     // 1. Dispatch registration event to all loaded native mods
     crate::mod_loader::on_register_content();
 
-    // 2. Collect registered items and virtual resources from all mods in deterministic topological order
+    // 2. Collect registered items, blocks, and virtual resources from all mods in deterministic topological order
     let items = crate::mod_loader::collect_registered_items();
+    let blocks = crate::mod_loader::collect_registered_blocks();
     crate::mod_loader::collect_registered_resources();
 
-    // 3. Register each custom item into BuiltInRegistries.ITEM via JNI
+    // 3. Register each custom block into BuiltInRegistries.BLOCK (and associated BlockItem) via JNI
+    for block in &blocks {
+        if let Err(err) = crate::registry::register_block_in_game(env, block) {
+            eprintln!(
+                "[redox-mc-loader] ERROR: Failed to register block '{}': {}",
+                block.id, err
+            );
+        }
+    }
+
+    // 4. Register each custom item into BuiltInRegistries.ITEM via JNI
     for item in &items {
         if let Err(err) = crate::registry::register_item_in_game(env, item) {
             eprintln!(
@@ -201,12 +212,13 @@ pub unsafe fn handle_on_register_content(env: *mut jni::JNIEnv) {
         }
     }
 
-    // 4. Compute and store deterministic registry content hash
-    let hash = crate::registry::compute_registry_hash(&items);
+    // 5. Compute and store deterministic registry content hash
+    let hash = crate::registry::compute_full_registry_hash(&items, &blocks);
     crate::registry::set_registry_hash(hash.clone());
     println!(
-        "[redox-mc-loader] Content registration complete: {} custom item(s) registered. Registry Content Hash: {}",
+        "[redox-mc-loader] Content registration complete: {} custom item(s), {} custom block(s) registered. Registry Content Hash: {}",
         items.len(),
+        blocks.len(),
         hash
     );
 }

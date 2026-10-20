@@ -183,6 +183,11 @@ def main():
             proc.stdin.flush()
             time.sleep(1)
 
+            # Test 3: Send datapack list command to verify virtual pack injection
+            proc.stdin.write("datapack list\n")
+            proc.stdin.flush()
+            time.sleep(1)
+
             # Stop server
             proc.stdin.write("stop\n")
             proc.stdin.flush()
@@ -209,8 +214,10 @@ def main():
             "Server unexpectedly rejected testmod:ruby"
         assert "No player was found" in full_output, \
             "Expected give @p testmod:ruby to parse successfully and report 'No player was found'"
+        assert "redox_mod_resources" in full_output, \
+            "Expected virtual datapack 'redox_mod_resources' to be enabled in datapack list"
 
-        print("\n>>> TASK 4.3 HEADLESS ITEM VALIDATION PASSED! <<<")
+        print("\n>>> TASK 4.3 & TASK 5.1 HEADLESS VALIDATION PASSED! <<<")
         return 0
 
     finally:

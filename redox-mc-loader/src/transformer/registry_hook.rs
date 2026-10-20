@@ -187,8 +187,9 @@ pub unsafe fn handle_on_register_content(env: *mut jni::JNIEnv) {
     // 1. Dispatch registration event to all loaded native mods
     crate::mod_loader::on_register_content();
 
-    // 2. Collect registered items from all mods in deterministic topological order
+    // 2. Collect registered items and virtual resources from all mods in deterministic topological order
     let items = crate::mod_loader::collect_registered_items();
+    crate::mod_loader::collect_registered_resources();
 
     // 3. Register each custom item into BuiltInRegistries.ITEM via JNI
     for item in &items {

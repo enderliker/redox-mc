@@ -2,6 +2,7 @@
 
 pub mod hash;
 pub mod item;
+pub mod resource;
 
 pub use hash::{
     compute_registry_hash, get_registry_hash, set_registry_hash, RegisteredItemEntry,

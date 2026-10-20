@@ -62,6 +62,42 @@ public final class RedoxBridge {
     public static native void onItemFinishUsing(String itemId);
 
     /**
+     * Retrieves a virtual resource from the native loader.
+     *
+     * @param type "assets" (CLIENT_RESOURCES) or "data" (SERVER_DATA)
+     * @param namespace e.g. "testmod"
+     * @param path e.g. "loot_table/blocks/ruby_block.json"
+     * @return raw byte content or null if not registered
+     */
+    public static native byte[] getVirtualResource(String type, String namespace, String path);
+
+    /**
+     * Lists virtual resources under a directory prefix.
+     *
+     * @param type "assets" or "data"
+     * @param namespace e.g. "testmod"
+     * @param directory e.g. "recipes"
+     * @return array of relative resource paths under the directory
+     */
+    public static native String[] listVirtualResources(String type, String namespace, String directory);
+
+    /**
+     * Returns all namespaces registered for a given pack type.
+     *
+     * @param type "assets" or "data"
+     * @return array of namespace strings
+     */
+    public static native String[] getVirtualNamespaces(String type);
+
+    /**
+     * Retrieves root virtual pack resources (e.g. "pack.mcmeta").
+     *
+     * @param path e.g. "pack.mcmeta"
+     * @return raw byte content or null if not registered
+     */
+    public static native byte[] getVirtualRootResource(String path);
+
+    /**
      * Returns true if the game classloader (first class in net/minecraft/*) has been captured.
      */
     public static native boolean isClassLoaderCaptured();

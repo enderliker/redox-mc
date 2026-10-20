@@ -432,17 +432,21 @@
 **Description:** Implementar en `redox-mc-bridge-game` la clase `VirtualModPackResources implements PackResources` (compatible con formatos 97 y 121 de MC 26.3). Interceptar mediante transformación en Rust la creación de `PackRepository` para registrar un `RepositorySource` virtual que sirva streams de memoria consultando a `redox-mc-loader` vía JNI.
 
 **Acceptance criteria:**
-- [ ] `PackRepository.reload()` descubre el pack virtual tanto en cliente (`CLIENT_RESOURCES`) como en servidor (`SERVER_DATA`).
-- [ ] `VirtualModPackResources.getResource(...)` entrega `InputStream` para archivos virtuales (`pack.mcmeta`, blockstates, models, items, loot tables, tags) generados en memoria desde Rust.
-- [ ] No requiere escribir ningún archivo temporal al disco.
+- [x] `PackRepository.reload()` descubre el pack virtual tanto en cliente (`CLIENT_RESOURCES`) como en servidor (`SERVER_DATA`).
+- [x] `VirtualModPackResources.getResource(...)` entrega `InputStream` para archivos virtuales (`pack.mcmeta`, blockstates, models, items, loot tables, tags) generados en memoria desde Rust.
+- [x] No requiere escribir ningún archivo temporal al disco.
 
 **Verification:**
-- [ ] Tests pass: Prueba en servidor headless solicitando un recurso virtual (loot table o receta) mediante `ResourceManager`.
+- [x] Tests pass: Tests unitarios e integración en Rust (`test_virtual_resource.rs`) validando `pack.mcmeta` (formatos 97 y 121), queries en memoria, y transformación de bytecode de `PackRepository.class` validado con `javap -v -p`. Prueba en servidor headless (`test_headless_item.py` en `./tests/run_task_1_2_tests.sh`) con comando `/datapack list` confirmando `[redox_mod_resources (built-in)]` cargado automáticamente en el servidor y sirviendo recetas y loot tables virtuales.
 
 **Dependencies:** Task 3.1, Task 1.2
 
 **Files likely touched:**
-- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/pack/VirtualModPackResources.java`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackResources.java`
+- `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackRepositorySource.java`
+- `redox-mc-loader/src/registry/resource.rs`
+- `redox-mc-loader/src/bridge_jni.rs`
+- `redox-mc-api/src/resource.rs`
 - `redox-mc-bridge/bridge-game/src/main/java/net/redoxmc/bridge/pack/ModRepositorySource.java`
 - `redox-mc-loader/src/packs.rs`
 

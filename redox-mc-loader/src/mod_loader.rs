@@ -510,6 +510,77 @@ impl ModManager {
 
         items
     }
+
+    /// Collects and registers all virtual resources from loaded mods in deterministic order.
+    pub fn collect_registered_resources(&self) {
+        type GetResourceCountFn = unsafe extern "C" fn() -> usize;
+        type GetResourceAtFn = unsafe extern "C" fn(
+            usize,
+            *mut redox_mc_abi::types::FfiStr,
+            *mut redox_mc_abi::types::FfiStr,
+            *mut redox_mc_abi::types::FfiStr,
+            *mut *const u8,
+            *mut usize,
+        ) -> redox_mc_abi::types::FfiStatus;
+
+        for loaded in &self.loaded_mods {
+            let get_count_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetResourceCountFn>(b"redox_mod_get_resource_count\0")
+            };
+            let get_at_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetResourceAtFn>(b"redox_mod_get_resource_at\0")
+            };
+
+            if let (Ok(get_count), Ok(get_at)) = (get_count_sym, get_at_sym) {
+                let count = unsafe { get_count() };
+                for i in 0..count {
+                    let mut pack_type = redox_mc_abi::types::FfiStr::EMPTY;
+                    let mut namespace = redox_mc_abi::types::FfiStr::EMPTY;
+                    let mut path = redox_mc_abi::types::FfiStr::EMPTY;
+                    let mut data_ptr: *const u8 = std::ptr::null();
+                    let mut data_len: usize = 0;
+
+                    let status = unsafe {
+                        get_at(
+                            i,
+                            &mut pack_type,
+                            &mut namespace,
+                            &mut path,
+                            &mut data_ptr,
+                            &mut data_len,
+                        )
+                    };
+
+                    if status == redox_mc_abi::types::FfiStatus::Success && !data_ptr.is_null() {
+                        let pt = unsafe { pack_type.as_str().unwrap_or("data") };
+                        let ns = unsafe { namespace.as_str().unwrap_or("") };
+                        let p = unsafe { path.as_str().unwrap_or("") };
+                        let bytes = unsafe { std::slice::from_raw_parts(data_ptr, data_len) };
+
+                        crate::registry::resource::register_virtual_resource(
+                            pt,
+                            ns,
+                            p,
+                            bytes.to_vec(),
+                        );
+                        println!(
+                            "[redox-mc-loader] Mod '{}' registered virtual resource: [{}] {}/{}",
+                            loaded.manifest.id, pt, ns, p
+                        );
+                    } else {
+                        eprintln!(
+                            "[redox-mc-loader] ERROR: Mod '{}' redox_mod_get_resource_at({}) returned status {:?}",
+                            loaded.manifest.id, i, status
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Default for ModManager {
@@ -550,6 +621,14 @@ pub fn collect_registered_items() -> Vec<crate::registry::RegisteredItemEntry> {
         manager.collect_registered_items()
     } else {
         Vec::new()
+    }
+}
+
+/// Collects and registers all virtual resources from loaded mods in deterministic order.
+pub fn collect_registered_resources() {
+    let guard = MOD_MANAGER.lock().unwrap();
+    if let Some(manager) = guard.as_ref() {
+        manager.collect_registered_resources();
     }
 }
 

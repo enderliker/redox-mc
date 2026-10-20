@@ -3,6 +3,7 @@ use crate::class_injector::{
 };
 use jvmti_bindings::sys::jni;
 use std::ffi::{CStr, CString};
+use std::ptr;
 
 /// Explicitly registers native methods for net.redoxmc.bridge.RedoxBridge using JNI RegisterNatives.
 ///
@@ -49,6 +50,21 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
     let m_item_finish = CString::new("onItemFinishUsing").unwrap();
     let sig_item_finish = CString::new("(Ljava/lang/String;)V").unwrap();
 
+    let m_get_vresource = CString::new("getVirtualResource").unwrap();
+    let sig_get_vresource =
+        CString::new("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[B").unwrap();
+
+    let m_list_vresources = CString::new("listVirtualResources").unwrap();
+    let sig_list_vresources =
+        CString::new("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;")
+            .unwrap();
+
+    let m_get_vnamespaces = CString::new("getVirtualNamespaces").unwrap();
+    let sig_get_vnamespaces = CString::new("(Ljava/lang/String;)[Ljava/lang/String;").unwrap();
+
+    let m_get_vroot = CString::new("getVirtualRootResource").unwrap();
+    let sig_get_vroot = CString::new("(Ljava/lang/String;)[B").unwrap();
+
     let methods = [
         jni::JNINativeMethod {
             name: m_init.as_ptr() as *mut _,
@@ -94,6 +110,26 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_item_finish.as_ptr() as *mut _,
             signature: sig_item_finish.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onItemFinishUsing as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_get_vresource.as_ptr() as *mut _,
+            signature: sig_get_vresource.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_getVirtualResource as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_list_vresources.as_ptr() as *mut _,
+            signature: sig_list_vresources.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_listVirtualResources as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_get_vnamespaces.as_ptr() as *mut _,
+            signature: sig_get_vnamespaces.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_getVirtualNamespaces as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_get_vroot.as_ptr() as *mut _,
+            signature: sig_get_vroot.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_getVirtualRootResource as *mut _,
         },
         jni::JNINativeMethod {
             name: m_captured.as_ptr() as *mut _,
@@ -435,4 +471,179 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_testDefineClas
     }));
 
     result.unwrap_or(jni::JNI_FALSE)
+}
+
+/// Converts a JNI jstring to an owned Rust String.
+unsafe fn jstring_to_string(env: *mut jni::JNIEnv, j_str: jni::jstring) -> String {
+    if j_str.is_null() {
+        return String::new();
+    }
+    let chars = ((**env).GetStringUTFChars)(env, j_str, ptr::null_mut());
+    if chars.is_null() {
+        return String::new();
+    }
+    let s = CStr::from_ptr(chars).to_string_lossy().to_string();
+    ((**env).ReleaseStringUTFChars)(env, j_str, chars);
+    s
+}
+
+/// Converts a Rust byte slice into a JNI jbyteArray.
+unsafe fn bytes_to_jbyte_array(env: *mut jni::JNIEnv, data: &[u8]) -> jni::jbyteArray {
+    let arr = ((**env).NewByteArray)(env, data.len() as jni::jsize);
+    if arr.is_null() {
+        return ptr::null_mut();
+    }
+    ((**env).SetByteArrayRegion)(
+        env,
+        arr,
+        0,
+        data.len() as jni::jsize,
+        data.as_ptr() as *const jni::jbyte,
+    );
+    arr
+}
+
+/// Converts a slice of Rust Strings into a JNI jobjectArray of java/lang/String.
+unsafe fn string_vec_to_jobject_array(
+    env: *mut jni::JNIEnv,
+    strings: &[String],
+) -> jni::jobjectArray {
+    let string_class_name = CString::new("java/lang/String").unwrap();
+    let string_class = ((**env).FindClass)(env, string_class_name.as_ptr());
+    if string_class.is_null() {
+        return ptr::null_mut();
+    }
+
+    let arr = ((**env).NewObjectArray)(
+        env,
+        strings.len() as jni::jsize,
+        string_class,
+        ptr::null_mut(),
+    );
+    if arr.is_null() {
+        ((**env).DeleteLocalRef)(env, string_class as jni::jobject);
+        return ptr::null_mut();
+    }
+
+    for (i, s) in strings.iter().enumerate() {
+        let c_str = CString::new(s.as_str()).unwrap_or_default();
+        let j_str = ((**env).NewStringUTF)(env, c_str.as_ptr());
+        if !j_str.is_null() {
+            ((**env).SetObjectArrayElement)(env, arr, i as jni::jsize, j_str as jni::jobject);
+            ((**env).DeleteLocalRef)(env, j_str as jni::jobject);
+        }
+    }
+
+    ((**env).DeleteLocalRef)(env, string_class as jni::jobject);
+    arr
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.getVirtualResource(String type, String namespace, String path)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getVirtualResource(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    j_type: jni::jstring,
+    j_namespace: jni::jstring,
+    j_path: jni::jstring,
+) -> jni::jbyteArray {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if j_type.is_null() || j_namespace.is_null() || j_path.is_null() {
+            return ptr::null_mut();
+        }
+
+        let type_str = jstring_to_string(env, j_type);
+        let ns_str = jstring_to_string(env, j_namespace);
+        let path_str = jstring_to_string(env, j_path);
+
+        if let Some(data) =
+            crate::registry::resource::get_virtual_resource(&type_str, &ns_str, &path_str)
+        {
+            bytes_to_jbyte_array(env, &data)
+        } else {
+            ptr::null_mut()
+        }
+    }));
+
+    result.unwrap_or(ptr::null_mut())
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.listVirtualResources(String type, String namespace, String directory)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_listVirtualResources(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    j_type: jni::jstring,
+    j_namespace: jni::jstring,
+    j_dir: jni::jstring,
+) -> jni::jobjectArray {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if j_type.is_null() || j_namespace.is_null() || j_dir.is_null() {
+            return ptr::null_mut();
+        }
+
+        let type_str = jstring_to_string(env, j_type);
+        let ns_str = jstring_to_string(env, j_namespace);
+        let dir_str = jstring_to_string(env, j_dir);
+
+        let list = crate::registry::resource::list_virtual_resources(&type_str, &ns_str, &dir_str);
+        string_vec_to_jobject_array(env, &list)
+    }));
+
+    result.unwrap_or(ptr::null_mut())
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.getVirtualNamespaces(String type)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getVirtualNamespaces(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    j_type: jni::jstring,
+) -> jni::jobjectArray {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if j_type.is_null() {
+            return ptr::null_mut();
+        }
+
+        let type_str = jstring_to_string(env, j_type);
+        let list = crate::registry::resource::get_virtual_namespaces(&type_str);
+        string_vec_to_jobject_array(env, &list)
+    }));
+
+    result.unwrap_or(ptr::null_mut())
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.getVirtualRootResource(String path)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getVirtualRootResource(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    j_path: jni::jstring,
+) -> jni::jbyteArray {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if j_path.is_null() {
+            return ptr::null_mut();
+        }
+
+        let path_str = jstring_to_string(env, j_path);
+        if let Some(data) = crate::registry::resource::get_virtual_root_resource(&path_str) {
+            bytes_to_jbyte_array(env, &data)
+        } else {
+            ptr::null_mut()
+        }
+    }));
+
+    result.unwrap_or(ptr::null_mut())
 }

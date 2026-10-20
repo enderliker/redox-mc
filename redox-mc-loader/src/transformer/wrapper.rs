@@ -162,6 +162,7 @@ fn make_return_instruction(ret_type: Option<JvmType>) -> Instruction {
 fn push_call_original(
     instructions: &mut Vec<Instruction>,
     is_static: bool,
+    is_private: bool,
     params: &[JvmType],
     orig_method_ref: u16,
 ) {
@@ -178,6 +179,8 @@ fn push_call_original(
 
     if is_static {
         instructions.push(Instruction::Invokestatic(orig_method_ref));
+    } else if is_private {
+        instructions.push(Instruction::Invokespecial(orig_method_ref));
     } else {
         instructions.push(Instruction::Invokevirtual(orig_method_ref));
     }
@@ -231,11 +234,17 @@ pub fn apply_wrapper_hooks(
         let orig_idx = target_method_idx.unwrap();
         let orig_access_flags = class_file.methods[orig_idx].access_flags;
         let is_static = orig_access_flags.contains(MethodAccessFlags::STATIC);
+        let is_private = orig_access_flags.contains(MethodAccessFlags::PRIVATE);
         let (params, ret_type) = parse_descriptor(hook.method_desc)?;
 
         // 1. Rename original method to `<name>$original`
         let renamed_name_idx = class_file.constant_pool.add_utf8(&renamed_name)?;
         class_file.methods[orig_idx].name_index = renamed_name_idx;
+        if is_private {
+            class_file.methods[orig_idx]
+                .access_flags
+                .remove(MethodAccessFlags::PRIVATE);
+        }
 
         // 2. Add constant pool entries for wrapper
         let wrapper_name_idx = class_file.constant_pool.add_utf8(hook.method_name)?;
@@ -285,7 +294,13 @@ pub fn apply_wrapper_hooks(
             instructions.push(Instruction::Ifeq(0));
 
             // Load parameters and invoke original method
-            push_call_original(&mut instructions, is_static, &params, orig_method_ref);
+            push_call_original(
+                &mut instructions,
+                is_static,
+                is_private,
+                &params,
+                orig_method_ref,
+            );
 
             // Return from the wrapper (target of Ifeq jump when cancelled)
             let target_return_idx = instructions.len() as u16;
@@ -312,7 +327,13 @@ pub fn apply_wrapper_hooks(
             }
 
             // Load parameters and invoke original method
-            push_call_original(&mut instructions, is_static, &params, orig_method_ref);
+            push_call_original(
+                &mut instructions,
+                is_static,
+                is_private,
+                &params,
+                orig_method_ref,
+            );
 
             // Invoke optional post-bridge callback
             if let (Some(post_method), Some(post_desc)) =

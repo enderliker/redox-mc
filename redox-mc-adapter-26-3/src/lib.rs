@@ -60,6 +60,18 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
         post_bridge_method: None,
         post_bridge_desc: None,
     },
+    // 5. Pack discovery: inject virtual mod pack into PackRepository.discoverAvailable()
+    HookTarget {
+        class_name: "net/minecraft/server/packs/repository/PackRepository",
+        method_name: "discoverAvailable",
+        method_desc: "()Ljava/util/Map;",
+        technique: HookTechnique::Wrapper,
+        bridge_class: "net/redoxmc/bridge/resource/VirtualModPackRepositorySource",
+        bridge_method: "onPreDiscoverPacks",
+        bridge_desc: "()V",
+        post_bridge_method: Some("injectVirtualPack"),
+        post_bridge_desc: Some("(Ljava/util/Map;)Ljava/util/Map;"),
+    },
 ];
 
 #[derive(Default, Debug, Clone, Copy)]

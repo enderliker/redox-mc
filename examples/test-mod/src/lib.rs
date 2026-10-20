@@ -63,6 +63,45 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
         .has_use(true);
     redox_mc_api::item::register_item(ruby);
     println!("[test-mod] Registered custom item: 'testmod:ruby'");
+
+    // Register in-memory virtual recipe for testmod:ruby
+    redox_mc_api::resource::register_data_resource(
+        "testmod",
+        "recipe/ruby_from_crafting.json",
+        br#"{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:diamond"
+  ],
+  "result": {
+    "count": 1,
+    "id": "testmod:ruby"
+  }
+}"#,
+    );
+
+    // Register in-memory virtual loot table for testmod:ruby
+    redox_mc_api::resource::register_data_resource(
+        "testmod",
+        "loot_table/blocks/ruby_block.json",
+        br#"{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "testmod:ruby"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}"#,
+    );
+    println!("[test-mod] Registered in-memory virtual recipe and loot table for 'testmod:ruby'");
+
     FfiStatus::Success
 }
 

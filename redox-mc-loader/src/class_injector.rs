@@ -198,6 +198,45 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         generic_item_name
     );
 
+    // 6. Virtual pack resources: VirtualModPackResources
+    let virtual_pack_name = "net/redoxmc/bridge/resource/VirtualModPackResources";
+    define_class(
+        env,
+        virtual_pack_name,
+        loader,
+        VIRTUAL_MOD_PACK_RESOURCES_BYTES,
+    )?;
+    println!(
+        "[redox-mc-loader] Defined virtual pack resources class: {}",
+        virtual_pack_name
+    );
+
+    // 7. Virtual pack repository source inner supplier: VirtualModPackRepositorySource$1
+    let repo_source_inner_name = "net/redoxmc/bridge/resource/VirtualModPackRepositorySource$1";
+    define_class(
+        env,
+        repo_source_inner_name,
+        loader,
+        VIRTUAL_MOD_PACK_REPOSITORY_SOURCE_INNER_BYTES,
+    )?;
+    println!(
+        "[redox-mc-loader] Defined repository source inner class: {}",
+        repo_source_inner_name
+    );
+
+    // 8. Virtual pack repository source: VirtualModPackRepositorySource
+    let repo_source_name = "net/redoxmc/bridge/resource/VirtualModPackRepositorySource";
+    define_class(
+        env,
+        repo_source_name,
+        loader,
+        VIRTUAL_MOD_PACK_REPOSITORY_SOURCE_BYTES,
+    )?;
+    println!(
+        "[redox-mc-loader] Defined repository source class: {}",
+        repo_source_name
+    );
+
     GAME_CLASSES_DEFINED.store(true, Ordering::Release);
     println!("[redox-mc-loader] All bridge-game classes defined successfully.");
     Ok(())
@@ -216,6 +255,21 @@ pub const TEST_MINECRAFT_SAVEDDATA_BYTES: &[u8] = include_bytes!(concat!(
 pub const GENERIC_RUST_ITEM_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/item/GenericRustItem.class"
+));
+
+pub const VIRTUAL_MOD_PACK_RESOURCES_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/resource/VirtualModPackResources.class"
+));
+
+pub const VIRTUAL_MOD_PACK_REPOSITORY_SOURCE_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/resource/VirtualModPackRepositorySource.class"
+));
+
+pub const VIRTUAL_MOD_PACK_REPOSITORY_SOURCE_INNER_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/resource/VirtualModPackRepositorySource$1.class"
 ));
 
 /// Verifies that a real Minecraft subclass was defined, linked, and can be instantiated

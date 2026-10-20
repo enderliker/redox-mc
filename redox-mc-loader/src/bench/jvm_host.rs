@@ -100,6 +100,10 @@ impl JvmHost {
     }
 
     /// Returns the thread-local JNIEnv pointer for the calling thread.
+    ///
+    /// # Safety
+    /// The caller must ensure that the underlying `JavaVM` pointer is valid and that the
+    /// returned `JNIEnv` pointer is only used from the calling thread.
     pub unsafe fn env(&self) -> *mut jni::JNIEnv {
         let mut env_ptr: *mut c_void = ptr::null_mut();
         let res = ((**self.vm).GetEnv)(self.vm, &mut env_ptr, jni::JNI_VERSION_1_8);
@@ -117,6 +121,10 @@ impl JvmHost {
     }
 
     /// Returns the raw JavaVM pointer.
+    ///
+    /// # Safety
+    /// The caller must ensure that the returned `JavaVM` pointer is used in accordance
+    /// with JNI invocation interface contracts.
     pub unsafe fn vm(&self) -> *mut jni::JavaVM {
         self.vm
     }

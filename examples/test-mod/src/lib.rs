@@ -47,8 +47,9 @@ pub fn redox_mod_init() -> i32 {
 }
 
 #[redox_export]
-pub fn redox_mod_on_bootstrap() {
+pub fn redox_mod_on_bootstrap() -> FfiStatus {
     println!("[test-mod] Hook received: Bootstrap.bootStrap() entered! Game is bootstrapping vanilla registries.");
+    FfiStatus::Success
 }
 
 #[redox_export]

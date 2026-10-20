@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 struct TestMessageEvent {
-    #[allow(dead_code)]
     message: String,
     visits: Vec<String>,
 }
@@ -13,7 +12,6 @@ impl Event for TestMessageEvent {}
 
 #[derive(Debug)]
 struct TestCancelEvent {
-    #[allow(dead_code)]
     id: u32,
     cancelled: bool,
 }
@@ -48,6 +46,7 @@ fn test_event_bus_basic_dispatch() {
 
     let result = bus.dispatch(&mut event);
     assert_eq!(result, EventResult::Allow);
+    assert_eq!(event.message, "hello");
     assert_eq!(counter.load(Ordering::SeqCst), 1);
     assert_eq!(event.visits, vec!["handler_1"]);
 }
@@ -117,6 +116,7 @@ fn test_cancellation_stops_propagation() {
 
     let result = bus.dispatch(&mut event);
     assert_eq!(result, EventResult::Cancel);
+    assert_eq!(event.id, 42);
     assert!(
         event.is_cancelled(),
         "Event must be marked as cancelled when handler returns Cancel"
@@ -152,6 +152,7 @@ fn test_cancellable_trait_method_cancel() {
 
     let result = bus.dispatch(&mut event);
     assert_eq!(result, EventResult::Cancel);
+    assert_eq!(event.id, 100);
     assert!(event.is_cancelled());
     assert!(!second_called.load(Ordering::SeqCst));
 }
@@ -306,4 +307,39 @@ fn test_server_chat_event_cancellation() {
     assert_eq!(result2, EventResult::Allow);
     assert!(!normal_chat.is_cancelled());
     assert!(normal_called.load(Ordering::SeqCst));
+}
+
+#[test]
+fn test_self_unsubscribe_does_not_deadlock() {
+    use redox_mc_api::event::ServerTickEvent;
+
+    let bus = Arc::new(EventBus::new());
+    let sub_id_slot = Arc::new(Mutex::new(None));
+
+    let bus_clone = bus.clone();
+    let slot_clone = sub_id_slot.clone();
+    let run_count = Arc::new(AtomicUsize::new(0));
+    let run_count_clone = run_count.clone();
+
+    let sub_id = bus.subscribe(move |_: &mut ServerTickEvent| {
+        run_count_clone.fetch_add(1, Ordering::SeqCst);
+        if let Some(id) = *slot_clone.lock().unwrap() {
+            // Unsubscribe itself while running! Must NOT deadlock.
+            bus_clone.unsubscribe(id);
+        }
+    });
+
+    *sub_id_slot.lock().unwrap() = Some(sub_id);
+
+    // First dispatch: handler runs and unsubscribes itself
+    let mut tick1 = ServerTickEvent::new(1);
+    let res1 = bus.dispatch(&mut tick1);
+    assert_eq!(res1, EventResult::Allow);
+    assert_eq!(run_count.load(Ordering::SeqCst), 1);
+
+    // Second dispatch: handler should no longer run
+    let mut tick2 = ServerTickEvent::new(2);
+    let res2 = bus.dispatch(&mut tick2);
+    assert_eq!(res2, EventResult::Allow);
+    assert_eq!(run_count.load(Ordering::SeqCst), 1);
 }

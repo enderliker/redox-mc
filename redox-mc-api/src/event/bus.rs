@@ -101,12 +101,12 @@ struct HandlerEntry {
     id: SubscriptionId,
     priority: EventPriority,
     order: u64,
-    handler: ErasedHandler,
+    handler: Mutex<ErasedHandler>,
 }
 
 /// A thread-safe, strongly-typed publish/subscribe event bus.
 pub struct EventBus {
-    handlers: RwLock<HashMap<TypeId, Vec<Arc<Mutex<HandlerEntry>>>>>,
+    handlers: RwLock<HashMap<TypeId, Vec<Arc<HandlerEntry>>>>,
     next_sub_id: AtomicU64,
     registration_counter: AtomicU64,
 }
@@ -160,15 +160,20 @@ impl EventBus {
             }
         };
 
-        let entry = Arc::new(Mutex::new(HandlerEntry {
+        let entry = Arc::new(HandlerEntry {
             id,
             priority,
             order,
-            handler: Box::new(erased_handler),
-        }));
+            handler: Mutex::new(Box::new(erased_handler)),
+        });
 
         let mut map = self.handlers.write().unwrap();
-        map.entry(type_id).or_default().push(entry);
+        let entries = map.entry(type_id).or_default();
+        // Insert pre-sorted by (priority ascending, order ascending)
+        let insert_idx = entries
+            .binary_search_by_key(&(priority, order), |e| (e.priority, e.order))
+            .unwrap_or_else(|idx| idx);
+        entries.insert(insert_idx, entry);
 
         id
     }
@@ -179,13 +184,14 @@ impl EventBus {
     pub fn unsubscribe(&self, id: SubscriptionId) -> bool {
         let mut map = self.handlers.write().unwrap();
         let mut found = false;
-        for entries in map.values_mut() {
+        map.retain(|_, entries| {
             let initial_len = entries.len();
-            entries.retain(|e| e.lock().unwrap().id != id);
+            entries.retain(|e| e.id != id);
             if entries.len() < initial_len {
                 found = true;
             }
-        }
+            !entries.is_empty()
+        });
         found
     }
 
@@ -196,21 +202,14 @@ impl EventBus {
     pub fn dispatch<E: Event>(&self, event: &mut E) -> EventResult {
         let type_id = TypeId::of::<E>();
 
-        // Copy handler references under read lock, then execute outside the read lock
-        let entries_to_run = {
+        // Copy handler references under read lock (already pre-sorted by priority and order)
+        let entries = {
             let map = self.handlers.read().unwrap();
-            map.get(&type_id).cloned()
+            let Some(list) = map.get(&type_id) else {
+                return EventResult::Allow;
+            };
+            list.clone()
         };
-
-        let Some(mut entries) = entries_to_run else {
-            return EventResult::Allow;
-        };
-
-        // Sort entries by (priority ascending, registration order ascending)
-        entries.sort_by_key(|e| {
-            let guard = e.lock().unwrap();
-            (guard.priority, guard.order)
-        });
 
         // Initial check in case event was already cancelled prior to dispatch
         if event.is_cancelled() {
@@ -218,8 +217,8 @@ impl EventBus {
         }
 
         for entry in entries {
-            let mut guard = entry.lock().unwrap();
-            let res = (guard.handler)(event as &mut (dyn Any + 'static));
+            let mut guard = entry.handler.lock().unwrap();
+            let res = (guard)(event as &mut (dyn Any + 'static));
 
             if res == EventResult::Cancel || event.is_cancelled() {
                 event.set_cancelled(true);

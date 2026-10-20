@@ -1,5 +1,3 @@
-#![allow(clippy::missing_safety_doc)]
-
 pub mod adapter;
 pub mod bench;
 pub mod bridge_jni;

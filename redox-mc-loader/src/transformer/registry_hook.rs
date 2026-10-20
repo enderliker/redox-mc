@@ -21,6 +21,18 @@ pub unsafe fn query_registry_status(env: *mut jni::JNIEnv) -> Result<RegistrySta
         return Err("JNIEnv pointer is null".into());
     }
 
+    if ((**env).PushLocalFrame)(env, 32) != jni::JNI_OK {
+        return Err("Failed to push JNI local frame".into());
+    }
+
+    let result = query_registry_status_inner(env);
+
+    ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+
+    result
+}
+
+unsafe fn query_registry_status_inner(env: *mut jni::JNIEnv) -> Result<RegistryStatus, String> {
     // 1. Locate BuiltInRegistries class
     let loader = crate::class_injector::get_game_class_loader();
     let built_in_registries_class = if !loader.is_null() {
@@ -140,16 +152,6 @@ pub unsafe fn query_registry_status(env: *mut jni::JNIEnv) -> Result<RegistrySta
             -1
         }
     };
-
-    // Clean up local references
-    ((**env).DeleteLocalRef)(env, item_reg_obj);
-    ((**env).DeleteLocalRef)(env, item_class);
-    if !mapped_reg_class.is_null() {
-        ((**env).DeleteLocalRef)(env, mapped_reg_class);
-    }
-    if loader.is_null() {
-        ((**env).DeleteLocalRef)(env, built_in_registries_class);
-    }
 
     Ok(RegistryStatus {
         is_frozen,

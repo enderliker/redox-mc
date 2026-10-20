@@ -25,6 +25,10 @@ pub const GAME_BRIDGE_BYTES: &[u8] = include_bytes!(concat!(
 /// creates and stores a JNI GlobalReference to the loader.
 /// Queries the version adapter's hook table and logs detected hook targets.
 /// NOTE: JNI DefineClass is NOT called here; only the reference is captured.
+///
+/// # Safety
+/// `raw_env` must be a valid pointer to a live JNIEnv for the calling thread,
+/// and `loader` must be a valid JNI jobject reference (or null).
 pub unsafe fn on_class_file_load(
     raw_env: *mut jni::JNIEnv,
     loader: jni::jobject,
@@ -89,6 +93,11 @@ pub fn get_first_captured_class() -> Option<String> {
 /// Defines a class into the given classloader using JNI DefineClass.
 /// If DefineClass fails, the error is logged with the class name and the pending
 /// Java exception is cleared, preventing a JVM crash.
+///
+/// # Safety
+/// `env` must be a valid pointer to a live JNIEnv for the calling thread,
+/// `loader` must be a valid classloader object or null, and `class_bytes` must
+/// be a valid byte slice containing Java classfile bytecode.
 pub unsafe fn define_class(
     env: *mut jni::JNIEnv,
     name: &str,
@@ -141,6 +150,9 @@ pub unsafe fn define_class(
 
 /// Defines the bridge-game classes into the captured classloader,
 /// ensuring superclasses are defined before subclasses.
+///
+/// # Safety
+/// `env` must be a valid pointer to a live JNIEnv for the calling thread.
 pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), String> {
     if GAME_CLASSES_DEFINED.load(Ordering::Acquire) {
         return Ok(());
@@ -195,6 +207,9 @@ pub const TEST_MINECRAFT_SAVEDDATA_BYTES: &[u8] = include_bytes!(concat!(
 
 /// Verifies that a real Minecraft subclass was defined, linked, and can be instantiated
 /// in the captured game classloader without NoClassDefFoundError.
+///
+/// # Safety
+/// `env` must be a valid pointer to a live JNIEnv for the calling thread.
 pub unsafe fn verify_real_minecraft_subclass(env: *mut jni::JNIEnv) -> Result<String, String> {
     define_game_bridge_classes(env)?;
 

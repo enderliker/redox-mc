@@ -111,9 +111,10 @@ pub struct FfiStr {
     pub len: usize,
 }
 
-#[allow(invalid_from_utf8)]
 fn invalid_utf8_error() -> Utf8Error {
-    std::str::from_utf8(b"\xFF").unwrap_err()
+    let mut b = [0u8; 1];
+    b[0] = 0xFF;
+    std::str::from_utf8(&b).unwrap_err()
 }
 
 impl FfiStr {

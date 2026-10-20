@@ -5,6 +5,9 @@ use jvmti_bindings::sys::jni;
 use std::ffi::{CStr, CString};
 
 /// Explicitly registers native methods for net.redoxmc.bridge.RedoxBridge using JNI RegisterNatives.
+///
+/// # Safety
+/// `env` must be a valid pointer to a live JNIEnv for the calling thread.
 pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), String> {
     let class_name = CString::new("net/redoxmc/bridge/RedoxBridge").unwrap();
     let bridge_class = ((**env).FindClass)(env, class_name.as_ptr());
@@ -105,64 +108,92 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.init()
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_init(
     env: *mut jni::JNIEnv,
     _class: jni::jclass,
 ) {
-    println!("[redox-mc-loader] Native RedoxBridge.init() invoked from Java.");
-    if let Err(err) = define_game_bridge_classes(env) {
-        eprintln!(
-            "[redox-mc-loader] Warning during RedoxBridge.init(): {}",
-            err
-        );
-    }
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        println!("[redox-mc-loader] Native RedoxBridge.init() invoked from Java.");
+        if let Err(err) = define_game_bridge_classes(env) {
+            eprintln!(
+                "[redox-mc-loader] Warning during RedoxBridge.init(): {}",
+                err
+            );
+        }
+    }));
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onBootstrapEntry()
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBootstrapEntry(
     env: *mut jni::JNIEnv,
     _class: jni::jclass,
 ) {
-    println!("[redox-mc-loader] Native RedoxBridge.onBootstrapEntry() invoked from Bootstrap.bootStrap().");
-    if let Err(err) = define_game_bridge_classes(env) {
-        eprintln!("[redox-mc-loader] Warning in onBootstrapEntry: {}", err);
-    }
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        println!("[redox-mc-loader] Native RedoxBridge.onBootstrapEntry() invoked from Bootstrap.bootStrap().");
+        if let Err(err) = define_game_bridge_classes(env) {
+            eprintln!("[redox-mc-loader] Warning in onBootstrapEntry: {}", err);
+        }
 
-    // Discover, load native mods in deterministic order and dispatch bootstrap event
-    crate::mod_loader::on_bootstrap_entry();
+        // Discover, load native mods in deterministic order and dispatch bootstrap event
+        crate::mod_loader::on_bootstrap_entry();
+    }));
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onRegisterContent()
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onRegisterContent(
     env: *mut jni::JNIEnv,
     _class: jni::jclass,
 ) {
-    crate::transformer::registry_hook::handle_on_register_content(env);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::transformer::registry_hook::handle_on_register_content(env);
+    }));
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onRegistriesFrozen()
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onRegistriesFrozen(
     env: *mut jni::JNIEnv,
     _class: jni::jclass,
 ) {
-    crate::transformer::registry_hook::handle_on_registries_frozen(env);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::transformer::registry_hook::handle_on_registries_frozen(env);
+    }));
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onServerTick(long tickCount)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onServerTick(
     _env: *mut jni::JNIEnv,
     _class: jni::jclass,
     tick_count: jni::jlong,
 ) {
-    crate::events::dispatch_server_tick(tick_count);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::events::dispatch_server_tick(tick_count);
+    }));
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onServerChat(String playerName, String message)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string references.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onServerChat(
     env: *mut jni::JNIEnv,
@@ -170,38 +201,49 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onServerChat(
     player_str: jni::jstring,
     msg_str: jni::jstring,
 ) -> jni::jboolean {
-    if player_str.is_null() || msg_str.is_null() {
-        return jni::JNI_TRUE;
-    }
-
-    let p_chars = ((**env).GetStringUTFChars)(env, player_str, std::ptr::null_mut());
-    let m_chars = ((**env).GetStringUTFChars)(env, msg_str, std::ptr::null_mut());
-
-    if p_chars.is_null() || m_chars.is_null() {
-        if !p_chars.is_null() {
-            ((**env).ReleaseStringUTFChars)(env, player_str, p_chars);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if player_str.is_null() || msg_str.is_null() {
+            return jni::JNI_TRUE;
         }
-        if !m_chars.is_null() {
-            ((**env).ReleaseStringUTFChars)(env, msg_str, m_chars);
+
+        let p_chars = ((**env).GetStringUTFChars)(env, player_str, std::ptr::null_mut());
+        let m_chars = ((**env).GetStringUTFChars)(env, msg_str, std::ptr::null_mut());
+
+        if p_chars.is_null() || m_chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            if !p_chars.is_null() {
+                ((**env).ReleaseStringUTFChars)(env, player_str, p_chars);
+            }
+            if !m_chars.is_null() {
+                ((**env).ReleaseStringUTFChars)(env, msg_str, m_chars);
+            }
+            return jni::JNI_TRUE;
         }
-        return jni::JNI_TRUE;
-    }
 
-    let player_name = CStr::from_ptr(p_chars).to_string_lossy().to_string();
-    let message = CStr::from_ptr(m_chars).to_string_lossy().to_string();
+        let player_name = CStr::from_ptr(p_chars).to_string_lossy();
+        let message = CStr::from_ptr(m_chars).to_string_lossy();
 
-    ((**env).ReleaseStringUTFChars)(env, player_str, p_chars);
-    ((**env).ReleaseStringUTFChars)(env, msg_str, m_chars);
+        let allow = crate::events::dispatch_server_chat(&player_name, &message);
 
-    let allow = crate::events::dispatch_server_chat(&player_name, &message);
-    if allow {
-        jni::JNI_TRUE
-    } else {
-        jni::JNI_FALSE
-    }
+        ((**env).ReleaseStringUTFChars)(env, player_str, p_chars);
+        ((**env).ReleaseStringUTFChars)(env, msg_str, m_chars);
+
+        if allow {
+            jni::JNI_TRUE
+        } else {
+            jni::JNI_FALSE
+        }
+    }));
+
+    result.unwrap_or(jni::JNI_TRUE)
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.isClassLoaderCaptured()
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_isClassLoaderCaptured(
     _env: *mut jni::JNIEnv,
@@ -215,6 +257,9 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_isClassLoaderC
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.getCapturedClassLoader()
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getCapturedClassLoader(
     _env: *mut jni::JNIEnv,
@@ -224,6 +269,9 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getCapturedCla
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.testDefineClass(String className, byte[] classBytes)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java object references.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_testDefineClass(
     env: *mut jni::JNIEnv,
@@ -231,41 +279,45 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_testDefineClas
     name_str: jni::jstring,
     bytes_arr: jni::jbyteArray,
 ) -> jni::jboolean {
-    if name_str.is_null() || bytes_arr.is_null() {
-        return jni::JNI_FALSE;
-    }
-
-    let loader = get_game_class_loader();
-    if loader.is_null() {
-        eprintln!("[redox-mc-loader] testDefineClass: loader is null!");
-        return jni::JNI_FALSE;
-    }
-
-    // Convert jstring to Rust &str
-    let chars = ((**env).GetStringUTFChars)(env, name_str, std::ptr::null_mut());
-    if chars.is_null() {
-        return jni::JNI_FALSE;
-    }
-    let class_name = CStr::from_ptr(chars).to_string_lossy().to_string();
-    ((**env).ReleaseStringUTFChars)(env, name_str, chars);
-
-    // Convert jbyteArray to Rust Vec<u8>
-    let length = ((**env).GetArrayLength)(env, bytes_arr) as usize;
-    let mut buffer = vec![0u8; length];
-    ((**env).GetByteArrayRegion)(
-        env,
-        bytes_arr,
-        0,
-        length as jni::jsize,
-        buffer.as_mut_ptr() as *mut jni::jbyte,
-    );
-
-    // Perform define_class
-    match define_class(env, &class_name, loader, &buffer) {
-        Ok(_) => jni::JNI_TRUE,
-        Err(_) => {
-            // Error was logged and exception cleared in define_class, JVM survives
-            jni::JNI_FALSE
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if name_str.is_null() || bytes_arr.is_null() {
+            return jni::JNI_FALSE;
         }
-    }
+
+        let loader = get_game_class_loader();
+        if loader.is_null() {
+            eprintln!("[redox-mc-loader] testDefineClass: loader is null!");
+            return jni::JNI_FALSE;
+        }
+
+        // Convert jstring to Rust &str
+        let chars = ((**env).GetStringUTFChars)(env, name_str, std::ptr::null_mut());
+        if chars.is_null() {
+            return jni::JNI_FALSE;
+        }
+        let class_name = CStr::from_ptr(chars).to_string_lossy().to_string();
+        ((**env).ReleaseStringUTFChars)(env, name_str, chars);
+
+        // Convert jbyteArray to Rust Vec<u8>
+        let length = ((**env).GetArrayLength)(env, bytes_arr) as usize;
+        let mut buffer = vec![0u8; length];
+        ((**env).GetByteArrayRegion)(
+            env,
+            bytes_arr,
+            0,
+            length as jni::jsize,
+            buffer.as_mut_ptr() as *mut jni::jbyte,
+        );
+
+        // Perform define_class
+        match define_class(env, &class_name, loader, &buffer) {
+            Ok(_) => jni::JNI_TRUE,
+            Err(_) => {
+                // Error was logged and exception cleared in define_class, JVM survives
+                jni::JNI_FALSE
+            }
+        }
+    }));
+
+    result.unwrap_or(jni::JNI_FALSE)
 }

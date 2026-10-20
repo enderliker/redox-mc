@@ -38,7 +38,7 @@ pub struct LoadedMod {
     pub binary_path: PathBuf,
     // Store library in memory for the life of the JVM (never dlclose)
     pub _library: Box<libloading::Library>,
-    pub on_bootstrap_fn: Option<unsafe extern "C" fn()>,
+    pub on_bootstrap_fn: Option<unsafe extern "C" fn() -> redox_mc_abi::types::FfiStatus>,
     pub on_register_content_fn: Option<unsafe extern "C" fn() -> redox_mc_abi::types::FfiStatus>,
     pub on_server_tick_fn: Option<unsafe extern "C" fn(i64) -> redox_mc_abi::types::FfiStatus>,
     pub on_server_chat_fn: Option<
@@ -246,12 +246,9 @@ impl ModManager {
 
             // Resolve bootstrap callback (from vtable or explicit symbol)
             let on_bootstrap_fn = if let Some(vtable) = vtable_opt {
-                vtable.on_bootstrap.map(|f| {
-                    let raw_fn: unsafe extern "C" fn() = unsafe { std::mem::transmute(f) };
-                    raw_fn
-                })
+                vtable.on_bootstrap
             } else {
-                type BootstrapFn = unsafe extern "C" fn();
+                type BootstrapFn = unsafe extern "C" fn() -> redox_mc_abi::types::FfiStatus;
                 let bootstrap_symbol =
                     unsafe { boxed_lib.get::<BootstrapFn>(b"redox_mod_on_bootstrap\0") };
                 bootstrap_symbol.ok().map(|s| *s)
@@ -321,8 +318,14 @@ impl ModManager {
 
         for loaded in &self.loaded_mods {
             if let Some(on_bootstrap) = loaded.on_bootstrap_fn {
-                unsafe {
-                    on_bootstrap();
+                let status = unsafe { on_bootstrap() };
+                if let Err(safety_err) =
+                    crate::safety::check_ffi_status(&loaded.manifest.id, status)
+                {
+                    eprintln!(
+                        "[redox-mc-loader] ERROR: Mod '{}' on_bootstrap failed: {}",
+                        loaded.manifest.id, safety_err
+                    );
                 }
             }
         }
@@ -477,10 +480,14 @@ pub fn on_bootstrap_entry() {
             "[redox-mc-loader] Dispatching Bootstrap.bootStrap() hook to {} loaded mod(s)...",
             callbacks.len()
         );
-        for (_id, cb) in callbacks {
+        for (id, cb) in callbacks {
             if let Some(on_bootstrap) = cb {
-                unsafe {
-                    on_bootstrap();
+                let status = unsafe { on_bootstrap() };
+                if let Err(safety_err) = crate::safety::check_ffi_status(&id, status) {
+                    eprintln!(
+                        "[redox-mc-loader] ERROR: Mod '{}' on_bootstrap failed: {}",
+                        id, safety_err
+                    );
                 }
             }
         }
@@ -523,21 +530,68 @@ pub fn on_register_content() {
 
 /// Called from RedoxBridge.onServerTick(long tickCount)
 pub fn on_server_tick(tick_count: i64) {
-    let guard = MOD_MANAGER.lock().unwrap();
-    if let Some(manager) = guard.as_ref() {
-        manager.dispatch_server_tick(tick_count);
+    // Snapshot callbacks outside the mutex to prevent deadlocks and lock contention during ticks
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .filter_map(|m| m.on_server_tick_fn.map(|cb| (m.manifest.id.clone(), cb)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    for (id, cb) in callbacks {
+        let status = unsafe { cb(tick_count) };
+        if let Err(safety_err) = crate::safety::check_ffi_status(&id, status) {
+            eprintln!(
+                "[redox-mc-loader] ERROR: Mod '{}' on_server_tick failed: {}",
+                id, safety_err
+            );
+        }
     }
 }
 
 /// Called from RedoxBridge.onServerChat(String playerName, String message)
 /// Returns true if allowed, false if cancelled by any loaded mod.
 pub fn on_server_chat(player_name: &str, message: &str) -> bool {
-    let guard = MOD_MANAGER.lock().unwrap();
-    if let Some(manager) = guard.as_ref() {
-        manager.dispatch_server_chat(player_name, message)
-    } else {
-        true
+    // Snapshot callbacks outside the mutex to prevent deadlocks and lock contention during chat
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        if let Some(manager) = guard.as_ref() {
+            manager
+                .loaded_mods
+                .iter()
+                .filter_map(|m| m.on_server_chat_fn.map(|cb| (m.manifest.id.clone(), cb)))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    let ffi_player = redox_mc_abi::types::FfiStr::from_str(player_name);
+    let ffi_msg = redox_mc_abi::types::FfiStr::from_str(message);
+
+    for (id, cb) in callbacks {
+        let res = unsafe { cb(ffi_player, ffi_msg) };
+        match crate::safety::check_ffi_result(&id, res) {
+            Ok(allow) => {
+                if !allow {
+                    return false;
+                }
+            }
+            Err(safety_err) => {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Mod '{}' on_server_chat failed: {}",
+                    id, safety_err
+                );
+            }
+        }
     }
+    true
 }
 
 fn find_binary_in_dir(dir: &Path) -> Option<PathBuf> {

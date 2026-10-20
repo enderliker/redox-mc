@@ -158,6 +158,31 @@ fn make_return_instruction(ret_type: Option<JvmType>) -> Instruction {
     }
 }
 
+/// Helper that pushes arguments and invokes the renamed original method.
+fn push_call_original(
+    instructions: &mut Vec<Instruction>,
+    is_static: bool,
+    params: &[JvmType],
+    orig_method_ref: u16,
+) {
+    let mut current_slot = 0u8;
+    if !is_static {
+        instructions.push(Instruction::Aload_0);
+        current_slot = 1;
+    }
+
+    for param in params {
+        instructions.push(make_load_instruction(*param, current_slot));
+        current_slot += param.slots();
+    }
+
+    if is_static {
+        instructions.push(Instruction::Invokestatic(orig_method_ref));
+    } else {
+        instructions.push(Instruction::Invokevirtual(orig_method_ref));
+    }
+}
+
 /// Applies wrapper method transformations to `class_file` for all matching hooks.
 ///
 /// Returns `Ok(true)` if at least one method was wrapped, `Ok(false)` otherwise.
@@ -259,24 +284,8 @@ pub fn apply_wrapper_hooks(
             let ifeq_idx = instructions.len();
             instructions.push(Instruction::Ifeq(0));
 
-            // Load parameters for the original method call
-            let mut current_slot = 0u8;
-            if !is_static {
-                instructions.push(Instruction::Aload_0);
-                current_slot = 1;
-            }
-
-            for param in &params {
-                instructions.push(make_load_instruction(*param, current_slot));
-                current_slot += param.slots();
-            }
-
-            // Invoke the original method
-            if is_static {
-                instructions.push(Instruction::Invokestatic(orig_method_ref));
-            } else {
-                instructions.push(Instruction::Invokevirtual(orig_method_ref));
-            }
+            // Load parameters and invoke original method
+            push_call_original(&mut instructions, is_static, &params, orig_method_ref);
 
             // Return from the wrapper (target of Ifeq jump when cancelled)
             let target_return_idx = instructions.len() as u16;
@@ -302,24 +311,8 @@ pub fn apply_wrapper_hooks(
                 instructions.push(Instruction::Pop);
             }
 
-            // Load parameters for the original method call
-            let mut current_slot = 0u8;
-            if !is_static {
-                instructions.push(Instruction::Aload_0);
-                current_slot = 1;
-            }
-
-            for param in &params {
-                instructions.push(make_load_instruction(*param, current_slot));
-                current_slot += param.slots();
-            }
-
-            // Invoke the original method
-            if is_static {
-                instructions.push(Instruction::Invokestatic(orig_method_ref));
-            } else {
-                instructions.push(Instruction::Invokevirtual(orig_method_ref));
-            }
+            // Load parameters and invoke original method
+            push_call_original(&mut instructions, is_static, &params, orig_method_ref);
 
             // Invoke optional post-bridge callback
             if let (Some(post_method), Some(post_desc)) =

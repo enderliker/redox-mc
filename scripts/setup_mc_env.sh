@@ -10,6 +10,14 @@ LIBRARIES_DIR="${ROOT_DIR}/libraries"
 
 mkdir -p "${VERSIONS_DIR}"
 
+to_native_path() {
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "$1"
+    else
+        echo "$1"
+    fi
+}
+
 # 1. Ensure bundler server.jar is present
 if [ ! -f "${BUNDLER_TARGET}" ]; then
     if [ -n "${MINECRAFT_BUNDLER_JAR:-}" ] && [ -f "${MINECRAFT_BUNDLER_JAR}" ]; then
@@ -27,11 +35,16 @@ fi
 # 2. Ensure inner server-26.3.jar is extracted
 if [ ! -f "${SERVER_INNER}" ]; then
     echo "[setup] Extracting server-26.3.jar from ${BUNDLER_TARGET}..."
-    if command -v unzip >/dev/null 2>&1; then
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "import zipfile, sys; z = zipfile.ZipFile(sys.argv[1]); open(sys.argv[2], 'wb').write(z.read('META-INF/versions/26.3/server-26.3.jar'))" "${BUNDLER_TARGET}" "${SERVER_INNER}"
+    elif command -v python >/dev/null 2>&1; then
+        python -c "import zipfile, sys; z = zipfile.ZipFile(sys.argv[1]); open(sys.argv[2], 'wb').write(z.read('META-INF/versions/26.3/server-26.3.jar'))" "${BUNDLER_TARGET}" "${SERVER_INNER}"
+    elif command -v unzip >/dev/null 2>&1; then
         unzip -p "${BUNDLER_TARGET}" "META-INF/versions/26.3/server-26.3.jar" > "${SERVER_INNER}"
     else
+        NATIVE_TARGET=$(to_native_path "${BUNDLER_TARGET}")
         EXTRACT_TMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_extract')
-        (cd "${EXTRACT_TMP}" && jar xf "${BUNDLER_TARGET}" "META-INF/versions/26.3/server-26.3.jar")
+        (cd "${EXTRACT_TMP}" && jar xf "${NATIVE_TARGET}" "META-INF/versions/26.3/server-26.3.jar")
         cp "${EXTRACT_TMP}/META-INF/versions/26.3/server-26.3.jar" "${SERVER_INNER}"
         rm -rf "${EXTRACT_TMP}"
     fi
@@ -41,16 +54,16 @@ fi
 if [ ! -d "${LIBRARIES_DIR}" ] || [ -z "$(find "${LIBRARIES_DIR}" -name "*.jar" -print -quit 2>/dev/null)" ]; then
     echo "[setup] Extracting bundler libraries from ${BUNDLER_TARGET} into ${LIBRARIES_DIR}..."
     mkdir -p "${LIBRARIES_DIR}"
-    EXTRACT_TMP=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_libs')
-    if command -v unzip >/dev/null 2>&1; then
-        unzip -q -o "${BUNDLER_TARGET}" "META-INF/libraries/*" -d "${EXTRACT_TMP}"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "import zipfile, sys; z = zipfile.ZipFile(sys.argv[1]); [z.extract(m, sys.argv[2]) for m in z.namelist() if m.startswith('META-INF/libraries/') and m.endswith('.jar')]" "${BUNDLER_TARGET}" "${LIBRARIES_DIR}"
+    elif command -v python >/dev/null 2>&1; then
+        python -c "import zipfile, sys; z = zipfile.ZipFile(sys.argv[1]); [z.extract(m, sys.argv[2]) for m in z.namelist() if m.startswith('META-INF/libraries/') and m.endswith('.jar')]" "${BUNDLER_TARGET}" "${LIBRARIES_DIR}"
+    elif command -v unzip >/dev/null 2>&1; then
+        (cd "${LIBRARIES_DIR}" && unzip -q -o "${BUNDLER_TARGET}" "META-INF/libraries/*")
     else
-        (cd "${EXTRACT_TMP}" && jar xf "${BUNDLER_TARGET}" "META-INF/libraries")
+        NATIVE_TARGET=$(to_native_path "${BUNDLER_TARGET}")
+        (cd "${LIBRARIES_DIR}" && jar xf "${NATIVE_TARGET}" "META-INF/libraries")
     fi
-    if [ -d "${EXTRACT_TMP}/META-INF/libraries" ]; then
-        cp -r "${EXTRACT_TMP}/META-INF/libraries/"* "${LIBRARIES_DIR}/"
-    fi
-    rm -rf "${EXTRACT_TMP}"
 fi
 
 echo "[setup] Minecraft 26.3 environment ready:"

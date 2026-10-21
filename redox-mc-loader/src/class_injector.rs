@@ -245,6 +245,35 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         repo_source_name
     );
 
+    // 10. Mod raw payload: ModRawPayload
+    let mod_raw_payload_name = "net/redoxmc/bridge/network/ModRawPayload";
+    define_class(env, mod_raw_payload_name, loader, MOD_RAW_PAYLOAD_BYTES)?;
+    println!(
+        "[redox-mc-loader] Defined mod raw payload class: {}",
+        mod_raw_payload_name
+    );
+
+    // 11. Mod network bridge inner StreamCodec: ModNetworkBridge$1
+    let network_bridge_inner_name = "net/redoxmc/bridge/network/ModNetworkBridge$1";
+    define_class(
+        env,
+        network_bridge_inner_name,
+        loader,
+        MOD_NETWORK_BRIDGE_INNER_BYTES,
+    )?;
+    println!(
+        "[redox-mc-loader] Defined network bridge inner class: {}",
+        network_bridge_inner_name
+    );
+
+    // 12. Mod network bridge: ModNetworkBridge
+    let network_bridge_name = "net/redoxmc/bridge/network/ModNetworkBridge";
+    define_class(env, network_bridge_name, loader, MOD_NETWORK_BRIDGE_BYTES)?;
+    println!(
+        "[redox-mc-loader] Defined network bridge class: {}",
+        network_bridge_name
+    );
+
     GAME_CLASSES_DEFINED.store(true, Ordering::Release);
     println!("[redox-mc-loader] All bridge-game classes defined successfully.");
     Ok(())
@@ -283,6 +312,21 @@ pub const VIRTUAL_MOD_PACK_REPOSITORY_SOURCE_BYTES: &[u8] = include_bytes!(conca
 pub const VIRTUAL_MOD_PACK_REPOSITORY_SOURCE_INNER_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/resource/VirtualModPackRepositorySource$1.class"
+));
+
+pub const MOD_RAW_PAYLOAD_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/network/ModRawPayload.class"
+));
+
+pub const MOD_NETWORK_BRIDGE_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/network/ModNetworkBridge.class"
+));
+
+pub const MOD_NETWORK_BRIDGE_INNER_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/network/ModNetworkBridge$1.class"
 ));
 
 /// Verifies that a real Minecraft subclass was defined, linked, and can be instantiated

@@ -517,12 +517,12 @@
 **Description:** Transformar `CustomPacketPayload` en Rust para que los identificadores de canales de mods no caigan en `DiscardedPayload`, sino en `ModRawPayload(Identifier id, byte[] data)` dentro de `redox-mc-bridge-game`, reteniendo los bytes originales y despachándolos a la capa nativa.
 
 **Acceptance criteria:**
-- [ ] Paquetes con namespaces de mods retienen el búfer binario completo.
-- [ ] Se transfieren a Rust como slice nativo `&[u8]`.
-- [ ] No altera el comportamiento de payloads vanilla (`BrandPayload`).
+- [x] Paquetes con namespaces de mods retienen el búfer binario completo.
+- [x] Se transfieren a Rust como slice nativo `&[u8]`.
+- [x] No altera el comportamiento de payloads vanilla (`BrandPayload`).
 
 **Verification:**
-- [ ] Tests pass: Prueba de codificación y decodificación de `ModRawPayload` con `FriendlyByteBuf`.
+- [x] Tests pass: Prueba de codificación y decodificación de `ModRawPayload` con `FriendlyByteBuf`.
 
 **Dependencies:** Task 3.1, Task 1.2
 

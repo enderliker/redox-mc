@@ -74,6 +74,9 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
     let m_get_vroot = CString::new("getVirtualRootResource").unwrap();
     let sig_get_vroot = CString::new("(Ljava/lang/String;)[B").unwrap();
 
+    let m_mod_payload = CString::new("onModCustomPayload").unwrap();
+    let sig_mod_payload = CString::new("(Ljava/lang/String;Ljava/lang/String;[B)V").unwrap();
+
     let methods = [
         jni::JNINativeMethod {
             name: m_init.as_ptr() as *mut _,
@@ -154,6 +157,11 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_get_vroot.as_ptr() as *mut _,
             signature: sig_get_vroot.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_getVirtualRootResource as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_mod_payload.as_ptr() as *mut _,
+            signature: sig_mod_payload.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onModCustomPayload as *mut _,
         },
         jni::JNINativeMethod {
             name: m_captured.as_ptr() as *mut _,
@@ -763,4 +771,34 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getVirtualRoot
     }));
 
     result.unwrap_or(ptr::null_mut())
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onModCustomPayload(String namespace, String path, byte[] data)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onModCustomPayload(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    j_namespace: jni::jstring,
+    j_path: jni::jstring,
+    j_data: jni::jbyteArray,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if env.is_null() || j_namespace.is_null() || j_path.is_null() || j_data.is_null() {
+            return;
+        }
+
+        let namespace = jstring_to_string(env, j_namespace);
+        let path = jstring_to_string(env, j_path);
+
+        let length = ((**env).GetArrayLength)(env, j_data) as usize;
+        let elements = ((**env).GetByteArrayElements)(env, j_data, ptr::null_mut());
+        if !elements.is_null() {
+            let slice: &[u8] = std::slice::from_raw_parts(elements as *const u8, length);
+            crate::network::dispatch_mod_payload(&namespace, &path, slice);
+            ((**env).ReleaseByteArrayElements)(env, j_data, elements, jni::JNI_ABORT);
+        }
+    }));
 }

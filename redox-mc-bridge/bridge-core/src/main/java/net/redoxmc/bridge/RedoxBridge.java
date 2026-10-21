@@ -68,6 +68,15 @@ public final class RedoxBridge {
     public static native int onBlockUseWithoutItem(String blockId, int x, int y, int z, int direction);
 
     /**
+     * Hook called when a custom mod network payload is received.
+     *
+     * @param namespace channel namespace (e.g. "testmod")
+     * @param path channel path (e.g. "data")
+     * @param data raw payload byte content
+     */
+    public static native void onModCustomPayload(String namespace, String path, byte[] data);
+
+    /**
      * Hook called when an entity steps onto a block.
      */
     public static native void onBlockStepOn(String blockId, int x, int y, int z);

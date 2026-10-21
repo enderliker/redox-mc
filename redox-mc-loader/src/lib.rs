@@ -6,6 +6,7 @@ pub mod events;
 pub mod manifest;
 pub mod mod_loader;
 pub mod mod_resolver;
+pub mod network;
 pub mod registry;
 pub mod safety;
 pub mod transformer;

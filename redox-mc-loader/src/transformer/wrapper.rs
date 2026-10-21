@@ -1,6 +1,6 @@
 use redox_mc_adapter_api::{HookTarget, HookTechnique};
 use ristretto_classfile::attributes::{Attribute, Instruction, MaxStack, StackFrame};
-use ristretto_classfile::{ClassFile, Method, MethodAccessFlags};
+use ristretto_classfile::{ClassAccessFlags, ClassFile, Method, MethodAccessFlags};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -257,11 +257,22 @@ pub fn apply_wrapper_hooks(
             hook.bridge_desc,
         )?;
 
-        let orig_method_ref = class_file.constant_pool.add_method_ref(
-            class_file.this_class,
-            renamed_name.as_str(),
-            hook.method_desc,
-        )?;
+        let is_interface = class_file
+            .access_flags
+            .contains(ClassAccessFlags::INTERFACE);
+        let orig_method_ref = if is_interface {
+            class_file.constant_pool.add_interface_method_ref(
+                class_file.this_class,
+                renamed_name.as_str(),
+                hook.method_desc,
+            )?
+        } else {
+            class_file.constant_pool.add_method_ref(
+                class_file.this_class,
+                renamed_name.as_str(),
+                hook.method_desc,
+            )?
+        };
 
         // 3. Generate instructions for wrapper method
         let mut instructions = Vec::new();

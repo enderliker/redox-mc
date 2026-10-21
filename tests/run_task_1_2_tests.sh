@@ -63,7 +63,16 @@ AGENT_PATH_NATIVE=$(to_native_path "${AGENT_LIB}")
 MOD_PATH_NATIVE=$(to_native_path "${MOD_LIB}")
 TEST_CLASSES_NATIVE=$(to_native_path "${ROOT_DIR}/redox-mc-bridge/build/test-classes")
 CORE_JAR_NATIVE=$(to_native_path "${ROOT_DIR}/redox-mc-bridge/build/bridge-core.jar")
+GAME_JAR_NATIVE=$(to_native_path "${ROOT_DIR}/redox-mc-bridge/build/bridge-game.jar")
 SERVER_JAR_NATIVE=$(to_native_path "${ROOT_DIR}/versions/26.3/server-26.3.jar")
+
+LIB_CP=""
+if [ -d "${ROOT_DIR}/libraries" ]; then
+    while IFS= read -r -d '' jar_file; do
+        NATIVE_JAR=$(to_native_path "${jar_file}")
+        LIB_CP="${LIB_CP}${CP_SEP}${NATIVE_JAR}"
+    done < <(find "${ROOT_DIR}/libraries" -name "*.jar" -print0)
+fi
 
 echo ""
 echo "=== Running Test 1: Client/Integrated Server ClassLoader Test ==="
@@ -151,6 +160,12 @@ if ! command -v python3 >/dev/null 2>&1 && command -v python >/dev/null 2>&1; th
     PYTHON_CMD="python"
 fi
 AGENT_LIB="${AGENT_PATH_NATIVE}" MOD_LIB="${MOD_PATH_NATIVE}" BUNDLER_JAR="${BUNDLER_PATH_NATIVE}" "${PYTHON_CMD}" "${ROOT_DIR}/tests/test_headless_item.py"
+
+echo ""
+echo "=== Running Test 7: Task 6.1 CustomPacketPayload & ModRawPayload Codec Test ==="
+java -agentpath:"${AGENT_PATH_NATIVE}" \
+    -cp "${TEST_CLASSES_NATIVE}${CP_SEP}${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}${CP_SEP}${SERVER_JAR_NATIVE}${LIB_CP}" \
+    net.redoxmc.test.CustomPayloadTest
 
 echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"

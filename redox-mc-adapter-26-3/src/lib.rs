@@ -72,6 +72,18 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
         post_bridge_method: Some("injectVirtualPack"),
         post_bridge_desc: Some("(Ljava/util/Map;)Ljava/util/Map;"),
     },
+    // 6. Custom packet payload codec: wrap CustomPacketPayload.codec to decode mod payloads into ModRawPayload
+    HookTarget {
+        class_name: "net/minecraft/network/protocol/common/custom/CustomPacketPayload",
+        method_name: "codec",
+        method_desc: "(Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload$FallbackProvider;Ljava/util/List;)Lnet/minecraft/network/codec/StreamCodec;",
+        technique: HookTechnique::Wrapper,
+        bridge_class: "net/redoxmc/bridge/network/ModNetworkBridge",
+        bridge_method: "onPreCustomPayloadCodec",
+        bridge_desc: "()V",
+        post_bridge_method: Some("wrapCodec"),
+        post_bridge_desc: Some("(Lnet/minecraft/network/codec/StreamCodec;)Lnet/minecraft/network/codec/StreamCodec;"),
+    },
 ];
 
 #[derive(Default, Debug, Clone, Copy)]

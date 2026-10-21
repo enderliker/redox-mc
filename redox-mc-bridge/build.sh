@@ -50,7 +50,9 @@ javac -cp "${CORE_JAR_NATIVE}${CP_SEP}${MC_SERVER_JAR_NATIVE}${LIB_CP}" -d "${BU
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/item/GenericRustItem.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/block/GenericRedoxBlock.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackResources.java" \
-    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackRepositorySource.java"
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackRepositorySource.java" \
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModRawPayload.java" \
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModNetworkBridge.java"
 
 jar cf "${BUILD_DIR}/bridge-game.jar" -C "${BUILD_DIR}/game-classes" .
 
@@ -66,6 +68,8 @@ javac -cp "${CORE_JAR_NATIVE}" -d "${BUILD_DIR}/test-classes" \
     "${SCRIPT_DIR}/src/test/java/net/minecraft/server/TestServerEntry.java" \
     "${SCRIPT_DIR}/src/test/java/net/redoxmc/test/BridgeClassLoaderTest.java" \
     "${SCRIPT_DIR}/src/test/java/net/redoxmc/test/BundlerSimulationTest.java"
+javac -cp "${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}${CP_SEP}${MC_SERVER_JAR_NATIVE}${LIB_CP}" -d "${BUILD_DIR}/test-classes" \
+    "${SCRIPT_DIR}/src/test/java/net/redoxmc/test/CustomPayloadTest.java"
 javac -d "${BUILD_DIR}/test-game-classes" \
     "${SCRIPT_DIR}/src/test/java/net/minecraft/server/TestBundledMain.java"
 

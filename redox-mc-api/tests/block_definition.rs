@@ -2,6 +2,9 @@ use redox_mc_api::block::{
     clear_registered_blocks, get_registered_blocks, register_block, BlockDefinition,
     FLAG_HAS_DESTROY, FLAG_HAS_STEP_ON, FLAG_HAS_USE_WITHOUT_ITEM,
 };
+use std::sync::Mutex;
+
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_block_definition_builder_and_flags() {
@@ -41,6 +44,7 @@ fn test_block_definition_builder_and_flags() {
 
 #[test]
 fn test_block_registration_and_retrieval() {
+    let _lock = TEST_MUTEX.lock().unwrap();
     clear_registered_blocks();
     assert!(get_registered_blocks().is_empty());
 
@@ -61,6 +65,7 @@ fn test_block_registration_and_retrieval() {
 
 #[test]
 fn test_block_c_abi_export_symbols() {
+    let _lock = TEST_MUTEX.lock().unwrap();
     clear_registered_blocks();
 
     let ruby_block = BlockDefinition::new("testmod:ruby_block")
@@ -121,6 +126,7 @@ fn test_block_c_abi_export_symbols() {
 
 #[test]
 fn test_block_declarative_cube_model_and_assets() {
+    let _lock = TEST_MUTEX.lock().unwrap();
     clear_registered_blocks();
     redox_mc_api::resource::clear_registered_resources();
 

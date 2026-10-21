@@ -2,6 +2,9 @@ use redox_mc_api::item::{
     clear_registered_items, get_registered_items, register_item, ItemDefinition,
     FLAG_HAS_FINISH_USING, FLAG_HAS_USE, FLAG_HAS_USE_ON,
 };
+use std::sync::Mutex;
+
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_item_definition_builder_and_flags() {
@@ -37,6 +40,7 @@ fn test_item_definition_builder_and_flags() {
 
 #[test]
 fn test_item_registration_and_retrieval() {
+    let _lock = TEST_MUTEX.lock().unwrap();
     clear_registered_items();
     assert!(get_registered_items().is_empty());
 
@@ -57,6 +61,7 @@ fn test_item_registration_and_retrieval() {
 
 #[test]
 fn test_c_abi_export_symbols() {
+    let _lock = TEST_MUTEX.lock().unwrap();
     clear_registered_items();
 
     let ruby = ItemDefinition::new("testmod:ruby")

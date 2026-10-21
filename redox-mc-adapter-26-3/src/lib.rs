@@ -84,6 +84,18 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
         post_bridge_method: Some("wrapCodec"),
         post_bridge_desc: Some("(Lnet/minecraft/network/codec/StreamCodec;)Lnet/minecraft/network/codec/StreamCodec;"),
     },
+    // 7. Server configuration handshake: intercept startConfiguration() to enqueue ModHandshakeConfigurationTask
+    HookTarget {
+        class_name: "net/minecraft/server/network/ServerConfigurationPacketListenerImpl",
+        method_name: "startConfiguration",
+        method_desc: "()V",
+        technique: HookTechnique::Wrapper,
+        bridge_class: "net/redoxmc/bridge/network/ModNetworkBridge",
+        bridge_method: "onStartConfiguration",
+        bridge_desc: "(Lnet/minecraft/server/network/ServerConfigurationPacketListenerImpl;)V",
+        post_bridge_method: None,
+        post_bridge_desc: None,
+    },
 ];
 
 #[derive(Default, Debug, Clone, Copy)]

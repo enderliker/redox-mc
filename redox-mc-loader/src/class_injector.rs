@@ -274,6 +274,19 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         network_bridge_name
     );
 
+    // 13. Mod handshake configuration task: ModHandshakeConfigurationTask
+    let handshake_task_name = "net/redoxmc/bridge/network/ModHandshakeConfigurationTask";
+    define_class(
+        env,
+        handshake_task_name,
+        loader,
+        MOD_HANDSHAKE_CONFIGURATION_TASK_BYTES,
+    )?;
+    println!(
+        "[redox-mc-loader] Defined handshake configuration task class: {}",
+        handshake_task_name
+    );
+
     GAME_CLASSES_DEFINED.store(true, Ordering::Release);
     println!("[redox-mc-loader] All bridge-game classes defined successfully.");
     Ok(())
@@ -327,6 +340,11 @@ pub const MOD_NETWORK_BRIDGE_BYTES: &[u8] = include_bytes!(concat!(
 pub const MOD_NETWORK_BRIDGE_INNER_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/network/ModNetworkBridge$1.class"
+));
+
+pub const MOD_HANDSHAKE_CONFIGURATION_TASK_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/network/ModHandshakeConfigurationTask.class"
 ));
 
 /// Verifies that a real Minecraft subclass was defined, linked, and can be instantiated

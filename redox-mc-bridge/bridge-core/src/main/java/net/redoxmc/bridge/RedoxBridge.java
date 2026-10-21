@@ -77,6 +77,31 @@ public final class RedoxBridge {
     public static native void onModCustomPayload(String namespace, String path, byte[] data);
 
     /**
+     * Returns the computed registry content hash, or empty string if none.
+     */
+    public static native String getRegistryHash();
+
+    /**
+     * Returns the array of loaded mod IDs on this instance.
+     */
+    public static native String[] getLoadedModIds();
+
+    /**
+     * Returns the array of loaded mod versions corresponding to getLoadedModIds().
+     */
+    public static native String[] getLoadedModVersions();
+
+    /**
+     * Validates client handshake credentials against server requirements.
+     *
+     * @param clientHash the registry content hash reported by the client
+     * @param clientModIds array of mod IDs installed on client
+     * @param clientModVersions array of mod versions installed on client
+     * @return null if handshake is valid, or error reason string if invalid
+     */
+    public static native String validateClientHandshake(String clientHash, String[] clientModIds, String[] clientModVersions);
+
+    /**
      * Hook called when an entity steps onto a block.
      */
     public static native void onBlockStepOn(String blockId, int x, int y, int z);

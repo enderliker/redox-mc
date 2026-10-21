@@ -1058,6 +1058,20 @@ pub fn on_block_destroy(block_id: &str, x: i32, y: i32, z: i32) {
     }
 }
 
+/// Returns the list of loaded mods as `(mod_id, version)` pairs.
+pub fn get_loaded_mods_info() -> Vec<(String, String)> {
+    let guard = MOD_MANAGER.lock().unwrap();
+    if let Some(manager) = guard.as_ref() {
+        manager
+            .loaded_mods
+            .iter()
+            .map(|m| (m.manifest.id.clone(), m.manifest.version.to_string()))
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
 fn find_binary_in_dir(dir: &Path) -> Option<PathBuf> {
     let entries = fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {

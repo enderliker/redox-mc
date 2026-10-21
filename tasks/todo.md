@@ -538,12 +538,12 @@
 **Description:** Implementar `ModHandshakeConfigurationTask implements ConfigurationTask` en `redox-mc-bridge-game`. Interceptar `ServerConfigurationPacketListenerImpl.startConfiguration()` para encolar la tarea. El servidor envía la lista de mods y el hash de contenido de registros calculado en la Fase 4 y 5; si el cliente difiere en mods o en el hash de registros, el servidor desconecta al cliente con un mensaje de error detallado.
 
 **Acceptance criteria:**
-- [ ] Intercambio de paquetes de configuración antes de la fase `PLAY`.
-- [ ] Si los mods y el hash de registros coinciden, la conexión progresa limpiamente a `PLAY`.
-- [ ] Si un cliente tiene versiones incompatibles o diferente hash de registros (IDs de bloques desalineados), se desconecta mostrando el motivo exacto.
+- [x] Intercambio de paquetes de configuración antes de la fase `PLAY`.
+- [x] Si los mods y el hash de registros coinciden, la conexión progresa limpiamente a `PLAY`.
+- [x] Si un cliente tiene versiones incompatibles o diferente hash de registros (IDs de bloques desalineados), se desconecta mostrando el motivo exacto.
 
 **Verification:**
-- [ ] Manual check: Probar conexión con mod alterado intencionalmente y verificar pantalla de desconexión descriptiva.
+- [x] Manual check: Probar conexión con mod alterado intencionalmente y verificar pantalla de desconexión descriptiva.
 
 **Dependencies:** Task 6.1, Task 4.2
 

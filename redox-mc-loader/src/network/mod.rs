@@ -1,5 +1,7 @@
 //! Network channel dispatch and mod payload decoding.
 
+pub mod handshake;
+
 use std::collections::HashMap;
 use std::sync::RwLock;
 

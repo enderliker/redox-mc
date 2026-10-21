@@ -168,5 +168,11 @@ java -agentpath:"${AGENT_PATH_NATIVE}" \
     net.redoxmc.test.CustomPayloadTest
 
 echo ""
+echo "=== Running Test 8: Task 6.2 ModHandshakeConfigurationTask & Registry Hash Verification ==="
+java -agentpath:"${AGENT_PATH_NATIVE}" \
+    -cp "${TEST_CLASSES_NATIVE}${CP_SEP}${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}${CP_SEP}${SERVER_JAR_NATIVE}${LIB_CP}" \
+    net.redoxmc.test.ModHandshakeTest
+
+echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"
 

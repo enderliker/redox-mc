@@ -28,6 +28,12 @@ pub struct BlockDefinition {
     pub has_step_on: bool,
     /// Whether the block defines custom logic when destroyed.
     pub has_destroy: bool,
+    /// Texture or model path for auto-generating cube assets (e.g. "testmod:block/ruby_block").
+    pub cube_model_texture: Option<String>,
+    /// Custom item dropped when the block is broken (defaults to `id` if None).
+    pub drop_item: Option<String>,
+    /// Whether to generate block loot table.
+    pub generate_loot_table: bool,
 }
 
 impl BlockDefinition {
@@ -43,11 +49,21 @@ impl BlockDefinition {
             has_use_without_item: false,
             has_step_on: false,
             has_destroy: false,
+            cube_model_texture: None,
+            drop_item: None,
+            generate_loot_table: true,
         }
     }
 
-    /// Sets both destroy time (hardness) and explosion resistance.
-    pub fn strength(mut self, destroy_time: f32, explosion_resistance: f32) -> Self {
+    /// Sets both destroy time (hardness) and explosion resistance to the same value.
+    pub fn strength(mut self, strength: f32) -> Self {
+        self.destroy_time = strength;
+        self.explosion_resistance = strength;
+        self
+    }
+
+    /// Sets destroy time and explosion resistance independently.
+    pub fn strength_and_resistance(mut self, destroy_time: f32, explosion_resistance: f32) -> Self {
         self.destroy_time = destroy_time;
         self.explosion_resistance = explosion_resistance;
         self
@@ -101,6 +117,46 @@ impl BlockDefinition {
         self
     }
 
+    /// Configures standard cube block models and blockstate using the specified texture.
+    ///
+    /// Autogenerates:
+    /// - `assets/<namespace>/blockstates/<id>.json`
+    /// - `assets/<namespace>/models/block/<id>.json`
+    /// - `assets/<namespace>/items/<id>.json` (if `has_item` is true)
+    /// - `assets/<namespace>/models/item/<id>.json` (if `has_item` is true)
+    /// - `data/<namespace>/loot_table/blocks/<id>.json` (if `generate_loot_table` is true)
+    pub fn cube_model(mut self, texture: impl Into<String>) -> Self {
+        self.cube_model_texture = Some(texture.into());
+        self
+    }
+
+    /// Configures a custom item dropped when the block is mined/broken.
+    pub fn drops(mut self, drop_item: impl Into<String>) -> Self {
+        self.drop_item = Some(drop_item.into());
+        self
+    }
+
+    /// Disables automatic generation of the block loot table.
+    pub fn no_loot_table(mut self) -> Self {
+        self.generate_loot_table = false;
+        self
+    }
+
+    /// Generates in-memory virtual resources for this block if a cube model texture is configured.
+    pub fn generate_virtual_resources(&self) -> Vec<crate::resource::VirtualResource> {
+        if let Some(texture) = &self.cube_model_texture {
+            crate::assets::generate_cube_block_assets(
+                &self.id,
+                texture,
+                self.drop_item.as_deref(),
+                self.has_item,
+                self.generate_loot_table,
+            )
+        } else {
+            Vec::new()
+        }
+    }
+
     /// Returns the bitmask of active behavior flags for this block.
     pub fn behavior_flags(&self) -> u32 {
         let mut flags = 0;
@@ -120,7 +176,16 @@ impl BlockDefinition {
 static REGISTERED_BLOCKS: Mutex<Vec<BlockDefinition>> = Mutex::new(Vec::new());
 
 /// Registers a custom block definition from the current mod.
+///
+/// If the block has a cube model configured via `.cube_model(...)`,
+/// its corresponding virtual assets and data pack entries (blockstate, block model,
+/// item models, and loot table) are automatically generated and registered.
 pub fn register_block(block: BlockDefinition) {
+    let resources = block.generate_virtual_resources();
+    for res in resources {
+        crate::resource::register_resource(res.pack_type, res.namespace, res.path, res.content);
+    }
+
     let mut blocks = REGISTERED_BLOCKS.lock().unwrap();
     blocks.push(block);
 }

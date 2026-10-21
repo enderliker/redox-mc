@@ -1,10 +1,17 @@
 //! Public API for developing native Redox-MC mods in Rust.
 
+pub mod assets;
 pub mod block;
 pub mod event;
 pub mod item;
 pub mod macros;
 pub mod resource;
+
+pub use assets::{
+    generate_block_loot_table, generate_cube_block_assets, generate_cube_block_model,
+    generate_cube_blockstate, generate_item_model_definition, generate_legacy_item_model,
+    split_identifier,
+};
 
 pub use block::{
     clear_registered_blocks, get_registered_blocks, register_block, BlockDefinition,

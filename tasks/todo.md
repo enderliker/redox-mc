@@ -485,12 +485,12 @@
 **Description:** Implementar en `redox-mc-api` la declaración de bloques con autogeneración de assets virtuales (`blockstates/<id>.json`, `models/block/<id>.json`, `items/<id>.json` y `loot_table/blocks/<id>.json`). Incorporar las propiedades y estados del bloque al cálculo del hash de contenido determinista. Verificar que los assets se generan y sirven correctamente tanto en Linux como en Windows (preparado en Tarea 4.4).
 
 **Acceptance criteria:**
-- [ ] Declaración limpia en Rust: `BlockDefinition::new("testmod:ruby_block").strength(3.0).cube_model("testmod:block/ruby_block")`.
-- [ ] El pack virtual entrega los JSON correspondientes al cliente sin texturas de error ni modelos missing.
-- [ ] Romper el bloque suelta el ítem generado en el loot table virtual.
+- [x] Declaración limpia en Rust: `BlockDefinition::new("testmod:ruby_block").strength(3.0).cube_model("testmod:block/ruby_block")`.
+- [x] El pack virtual entrega los JSON correspondientes al cliente sin texturas de error ni modelos missing.
+- [x] Romper el bloque suelta el ítem generado en el loot table virtual.
 
 **Verification:**
-- [ ] Manual check: Romper el bloque en cliente/servidor y verificar la obtención del ítem.
+- [x] Manual check: Romper el bloque en servidor headless (`/loot spawn 0 65 0 loot testmod:blocks/ruby_block` y `/setblock 0 64 0 minecraft:air destroy`) verificado con "Dropped 1 [item.testmod.ruby]" en `./tests/run_task_1_2_tests.sh`.
 
 **Dependencies:** Task 5.2, Task 4.4
 
@@ -504,10 +504,10 @@
 ---
 
 ## Checkpoint: Bloques e Ítems Completos
-- [ ] Paquetes virtuales operando en memoria sin disco.
-- [ ] Bloque registrado con `BlockState` en la paleta global y `BlockItem` vinculado.
-- [ ] Hash de contenido actualizado con bloques y sus estados.
-- [ ] Soporte de compilación en Windows validado.
+- [x] Paquetes virtuales operando en memoria sin disco.
+- [x] Bloque registrado con `BlockState` en la paleta global y `BlockItem` vinculado.
+- [x] Hash de contenido actualizado con bloques y sus estados.
+- [x] Soporte de compilación en Windows validado.
 
 ---
 

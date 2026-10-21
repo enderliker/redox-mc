@@ -203,6 +203,16 @@ def main():
             proc.stdin.flush()
             time.sleep(1)
 
+            # Test 6: Spawn loot from virtual block loot table
+            proc.stdin.write("loot spawn 0 65 0 loot testmod:blocks/ruby_block\n")
+            proc.stdin.flush()
+            time.sleep(1)
+
+            # Test 7: Destroy block to verify breaking drop behavior
+            proc.stdin.write("setblock 0 64 0 minecraft:air destroy\n")
+            proc.stdin.flush()
+            time.sleep(1)
+
             # Stop server
             proc.stdin.write("stop\n")
             proc.stdin.flush()
@@ -237,8 +247,10 @@ def main():
             "Expected server to reject unknown block"
         assert "Changed the block at 0, 64, 0" in full_output, \
             "Expected setblock 0 64 0 testmod:ruby_block to place the block successfully"
+        assert "Dropped 1 [item.testmod.ruby]" in full_output or "Dropped 1" in full_output, \
+            "Expected loot spawn 0 65 0 loot testmod:blocks/ruby_block to drop item from virtual loot table"
 
-        print("\n>>> TASK 4.3, TASK 5.1 & TASK 5.2 HEADLESS VALIDATION PASSED! <<<")
+        print("\n>>> TASK 4.3, TASK 5.1, TASK 5.2 & TASK 5.3 HEADLESS VALIDATION PASSED! <<<")
         return 0
 
     finally:

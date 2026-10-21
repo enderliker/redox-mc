@@ -73,6 +73,14 @@ fn test_dynamic_mod_discovery_and_loading() {
         loaded.on_block_use_without_item_fn.is_some(),
         "redox_mod_on_block_use_without_item symbol must be resolved"
     );
+    assert!(
+        loaded.on_block_step_on_fn.is_some(),
+        "redox_mod_on_block_step_on symbol must be resolved"
+    );
+    assert!(
+        loaded.on_block_destroy_fn.is_some(),
+        "redox_mod_on_block_destroy symbol must be resolved"
+    );
 
     // 4. Test lifecycle and gameplay hook dispatches
     manager.dispatch_bootstrap();

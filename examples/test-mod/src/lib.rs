@@ -65,11 +65,14 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
     println!("[test-mod] Registered custom item: 'testmod:ruby'");
 
     let ruby_block = redox_mc_api::block::BlockDefinition::new("testmod:ruby_block")
-        .strength(3.0, 6.0)
+        .strength(3.0)
+        .explosion_resistance(6.0)
+        .cube_model("testmod:block/ruby_block")
+        .drops("testmod:ruby")
         .requires_tool(true)
         .has_use_without_item(true);
     redox_mc_api::block::register_block(ruby_block);
-    println!("[test-mod] Registered custom block: 'testmod:ruby_block'");
+    println!("[test-mod] Registered custom block: 'testmod:ruby_block' with declarative cube model and loot table");
 
     // Register in-memory virtual recipe for testmod:ruby
     redox_mc_api::resource::register_data_resource(
@@ -87,27 +90,7 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
   }
 }"#,
     );
-
-    // Register in-memory virtual loot table for testmod:ruby
-    redox_mc_api::resource::register_data_resource(
-        "testmod",
-        "loot_table/blocks/ruby_block.json",
-        br#"{
-  "type": "minecraft:block",
-  "pools": [
-    {
-      "entries": [
-        {
-          "type": "minecraft:item",
-          "name": "testmod:ruby"
-        }
-      ],
-      "rolls": 1
-    }
-  ]
-}"#,
-    );
-    println!("[test-mod] Registered in-memory virtual recipe and loot table for 'testmod:ruby'");
+    println!("[test-mod] Registered in-memory virtual recipe for 'testmod:ruby'");
 
     FfiStatus::Success
 }
@@ -133,6 +116,24 @@ pub fn redox_mod_on_block_use_without_item(
         id, x, y, z, direction
     );
     1 // SUCCESS
+}
+
+#[redox_export]
+pub fn redox_mod_on_block_step_on(block_id: FfiStr, x: i32, y: i32, z: i32) {
+    let id = unsafe { block_id.as_str().unwrap_or("") };
+    println!(
+        "[test-mod] Custom block stepped on: '{}' at ({}, {}, {})",
+        id, x, y, z
+    );
+}
+
+#[redox_export]
+pub fn redox_mod_on_block_destroy(block_id: FfiStr, x: i32, y: i32, z: i32) {
+    let id = unsafe { block_id.as_str().unwrap_or("") };
+    println!(
+        "[test-mod] Custom block destroyed: '{}' at ({}, {}, {})",
+        id, x, y, z
+    );
 }
 
 #[redox_export]

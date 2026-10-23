@@ -3,7 +3,7 @@ use crate::mod_resolver::{resolve_load_order, ResolverError};
 use semver::Version;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -57,6 +57,10 @@ pub struct LoadedMod {
         Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32)>,
     pub on_block_destroy_fn:
         Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32)>,
+    /// Receives inbound mod channel payloads together with sender identity.
+    pub dispatch_network_payload_fn: Option<redox_mc_abi::types::NetworkDispatchFn>,
+    /// Drains the mod's queued outbound network messages.
+    pub drain_network_outbox_fn: Option<redox_mc_abi::types::NetworkOutboxDrainFn>,
 }
 
 pub struct ModManager {
@@ -348,6 +352,24 @@ impl ModManager {
                     .map(|s| *s)
             };
 
+            // Resolve typed network channel callbacks (Task 6.3).
+            let dispatch_network_payload_fn = unsafe {
+                boxed_lib
+                    .get::<redox_mc_abi::types::NetworkDispatchFn>(
+                        b"redox_mod_dispatch_network_payload\0",
+                    )
+                    .ok()
+                    .map(|s| *s)
+            };
+            let drain_network_outbox_fn = unsafe {
+                boxed_lib
+                    .get::<redox_mc_abi::types::NetworkOutboxDrainFn>(
+                        b"redox_mod_drain_network_outbox\0",
+                    )
+                    .ok()
+                    .map(|s| *s)
+            };
+
             self.loaded_mods.push(LoadedMod {
                 manifest,
                 binary_path: candidate.binary_path.clone(),
@@ -362,6 +384,8 @@ impl ModManager {
                 on_block_use_without_item_fn,
                 on_block_step_on_fn,
                 on_block_destroy_fn,
+                dispatch_network_payload_fn,
+                drain_network_outbox_fn,
             });
         }
 
@@ -722,6 +746,91 @@ unsafe extern "C" fn default_register_event_listener(
 // Global ModManager instance
 static MOD_MANAGER: Mutex<Option<ModManager>> = Mutex::new(None);
 
+/// Side on which this JVM is running, detected from the game classloader.
+static RUNNING_SIDE: OnceLock<ModSide> = OnceLock::new();
+
+pub fn set_running_side(side: ModSide) {
+    let _ = RUNNING_SIDE.set(side);
+}
+
+/// Returns the detected running side (defaults to server before detection).
+pub fn running_side() -> ModSide {
+    RUNNING_SIDE.get().copied().unwrap_or(ModSide::Server)
+}
+
+/// Dispatches an inbound mod channel payload to loader-local handlers and to
+/// every loaded mod in deterministic order.
+///
+/// # Safety
+/// `data` is only borrowed for the duration of the call; mods must copy anything
+/// they need to retain.
+pub unsafe fn dispatch_network_payload(
+    channel: &str,
+    data: &[u8],
+    sender_name: &str,
+    sender_uuid: &str,
+    side: ModSide,
+) {
+    crate::network::dispatch_local_handlers(channel, data);
+
+    let callbacks: Vec<(String, redox_mc_abi::types::NetworkDispatchFn)> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        match guard.as_ref() {
+            Some(manager) => manager
+                .loaded_mods
+                .iter()
+                .filter_map(|loaded| {
+                    loaded
+                        .dispatch_network_payload_fn
+                        .map(|cb| (loaded.manifest.id.clone(), cb))
+                })
+                .collect(),
+            None => Vec::new(),
+        }
+    };
+
+    let ffi_channel = redox_mc_abi::types::FfiStr::from_str(channel);
+    let ffi_data = redox_mc_abi::types::FfiSlice::from_slice(data);
+    let ffi_sender_name = redox_mc_abi::types::FfiStr::from_str(sender_name);
+    let ffi_sender_uuid = redox_mc_abi::types::FfiStr::from_str(sender_uuid);
+    let ffi_side = crate::network::side_to_abi(side);
+
+    for (id, cb) in callbacks {
+        let status = unsafe {
+            cb(
+                ffi_channel,
+                ffi_data,
+                ffi_sender_name,
+                ffi_sender_uuid,
+                ffi_side,
+            )
+        };
+        if let Err(safety_err) = crate::safety::check_ffi_status(&id, status) {
+            eprintln!(
+                "[redox-mc-loader] ERROR: Mod '{}' network dispatch failed: {}",
+                id, safety_err
+            );
+        }
+    }
+}
+
+/// Returns the outbox drain callbacks for all loaded mods in deterministic order.
+pub fn network_drain_callbacks() -> Vec<(String, redox_mc_abi::types::NetworkOutboxDrainFn)> {
+    let guard = MOD_MANAGER.lock().unwrap();
+    match guard.as_ref() {
+        Some(manager) => manager
+            .loaded_mods
+            .iter()
+            .filter_map(|loaded| {
+                loaded
+                    .drain_network_outbox_fn
+                    .map(|cb| (loaded.manifest.id.clone(), cb))
+            })
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
 pub fn get_or_init_manager() -> &'static Mutex<Option<ModManager>> {
     &MOD_MANAGER
 }
@@ -754,8 +863,16 @@ pub fn collect_registered_resources() {
     }
 }
 
-/// Called from RedoxBridge.onBootstrapEntry()
-pub fn on_bootstrap_entry() {
+/// Called from RedoxBridge.onBootstrapEntry().
+///
+/// `running_side` is detected from the game classloader before mods are loaded.
+pub fn on_bootstrap_entry(running_side: ModSide) {
+    set_running_side(running_side);
+    println!(
+        "[redox-mc-loader] Running side detected as: {:?}",
+        running_side
+    );
+
     {
         let mut guard = MOD_MANAGER.lock().unwrap();
         let manager = guard.get_or_insert_with(ModManager::new);
@@ -767,7 +884,6 @@ pub fn on_bootstrap_entry() {
 
             let loader_ver =
                 Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 1, 0));
-            let running_side = ModSide::Server; // Bootstrap on dedicated server
 
             if let Err(err) = manager.load_mods(&mods_dir, running_side, &loader_ver) {
                 eprintln!(

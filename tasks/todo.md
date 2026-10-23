@@ -559,11 +559,11 @@
 **Description:** Exponer en `redox-mc-api` funciones para registrar canales y enviar/recibir mensajes tipados: `NetworkChannel::register("testmod:data").on_receive(...)`. Conectar el envío bidireccional mediante `ClientboundCustomPayloadPacket` y `ServerboundCustomPayloadPacket`.
 
 **Acceptance criteria:**
-- [ ] Envío fiable de mensajes serializados entre cliente y servidor.
-- [ ] Los callbacks en Rust reciben el payload y la identidad del remitente.
+- [x] Envío fiable de mensajes serializados entre cliente y servidor.
+- [x] Los callbacks en Rust reciben el payload y la identidad del remitente.
 
 **Verification:**
-- [ ] Tests pass: Mod de ejemplo enviando un ping y validando la recepción del pong correspondiente.
+- [x] Tests pass: Mod de ejemplo enviando un ping y validando la recepción del pong correspondiente.
 
 **Dependencies:** Task 6.2
 
@@ -576,8 +576,8 @@
 ---
 
 ## Checkpoint: Red y Handshake
-- [ ] Handshake en fase `CONFIGURATION` validando mods y hash de registros.
-- [ ] Canales de red transmitiendo mensajes binarios personalizados sin corrupción.
+- [x] Handshake en fase `CONFIGURATION` validando mods y hash de registros.
+- [x] Canales de red transmitiendo mensajes binarios personalizados sin corrupción.
 
 ---
 

@@ -14,6 +14,20 @@ pub mod transformer;
 use jvmti_bindings::prelude::*;
 use jvmti_bindings::sys::jni;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+/// Returns the combined server + client hook table for the active adapter.
+///
+/// Client hooks are inert on dedicated servers because their classes never load.
+pub fn all_hook_targets() -> &'static [redox_mc_adapter_api::HookTarget] {
+    static HOOKS: OnceLock<Vec<redox_mc_adapter_api::HookTarget>> = OnceLock::new();
+    HOOKS.get_or_init(|| {
+        let adapter = adapter::active_adapter();
+        let mut hooks = adapter.hook_targets().to_vec();
+        hooks.extend_from_slice(adapter.client_hook_targets());
+        hooks
+    })
+}
 
 // Embedded bridge-core.jar bytecode to ensure the agent is 100% self-contained
 pub const BRIDGE_CORE_JAR_BYTES: &[u8] = include_bytes!(concat!(
@@ -84,8 +98,10 @@ impl Agent for RedoxMCAgent {
             adapter.classfile_version()
         );
         println!(
-            "[redox-mc-loader] Registered {} hook targets from adapter table.",
-            adapter.hook_targets().len()
+            "[redox-mc-loader] Registered {} hook targets from adapter table ({} server, {} client).",
+            all_hook_targets().len(),
+            adapter.hook_targets().len(),
+            adapter.client_hook_targets().len()
         );
         println!("[redox-mc-loader] JVMTI Agent initialized successfully.");
         println!("[redox-mc-loader] ==================================================");
@@ -196,7 +212,7 @@ impl Agent for RedoxMCAgent {
         }
 
         // 2. Fast-path: check if this class matches any hook in the active version adapter
-        let hooks = adapter::active_adapter().hook_targets();
+        let hooks = all_hook_targets();
         if let Some(ref name) = name_opt {
             if !hooks.iter().any(|h| h.class_name == name.as_ref()) {
                 return;

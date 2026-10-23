@@ -2,8 +2,9 @@ use crate::class_injector::{
     self, define_class, define_game_bridge_classes, get_game_class_loader,
 };
 use jvmti_bindings::sys::jni;
-use std::ffi::{CStr, CString};
+use std::ffi::{c_void, CStr, CString};
 use std::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 /// Explicitly registers native methods for net.redoxmc.bridge.RedoxBridge using JNI RegisterNatives.
 ///
@@ -76,6 +77,12 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
 
     let m_mod_payload = CString::new("onModCustomPayload").unwrap();
     let sig_mod_payload = CString::new("(Ljava/lang/String;Ljava/lang/String;[B)V").unwrap();
+
+    let m_mod_payload_from = CString::new("onModCustomPayloadFrom").unwrap();
+    let sig_mod_payload_from =
+        CString::new("(Ljava/lang/String;[BLjava/lang/String;Ljava/lang/String;I)V").unwrap();
+
+    let m_client_tick = CString::new("onClientTick").unwrap();
 
     let m_get_hash = CString::new("getRegistryHash").unwrap();
     let sig_get_hash = CString::new("()Ljava/lang/String;").unwrap();
@@ -179,6 +186,16 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onModCustomPayload as *mut _,
         },
         jni::JNINativeMethod {
+            name: m_mod_payload_from.as_ptr() as *mut _,
+            signature: sig_mod_payload_from.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onModCustomPayloadFrom as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_client_tick.as_ptr() as *mut _,
+            signature: sig_void.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onClientTick as *mut _,
+        },
+        jni::JNINativeMethod {
             name: m_get_hash.as_ptr() as *mut _,
             signature: sig_get_hash.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_getRegistryHash as *mut _,
@@ -270,7 +287,8 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBootstrapEnt
         }
 
         // Discover, load native mods in deterministic order and dispatch bootstrap event
-        crate::mod_loader::on_bootstrap_entry();
+        let running_side = detect_running_side(env);
+        crate::mod_loader::on_bootstrap_entry(running_side);
     }));
 }
 
@@ -308,12 +326,29 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onRegistriesFr
 /// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
 pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onServerTick(
-    _env: *mut jni::JNIEnv,
+    env: *mut jni::JNIEnv,
     _class: jni::jclass,
     tick_count: jni::jlong,
 ) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::events::dispatch_server_tick(tick_count);
+        drain_mod_network_outboxes(env, crate::manifest::ModSide::Server);
+    }));
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onClientTick()
+///
+/// Flushes queued outbound mod messages on the client thread.
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onClientTick(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        drain_mod_network_outboxes(env, crate::manifest::ModSide::Client);
     }));
 }
 
@@ -810,6 +845,8 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getVirtualRoot
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onModCustomPayload(String namespace, String path, byte[] data)
 ///
+/// Legacy compatibility entry point that does not carry sender identity.
+///
 /// # Safety
 /// Must be invoked by the JVM with a valid JNI environment pointer.
 #[no_mangle]
@@ -827,15 +864,353 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onModCustomPay
 
         let namespace = jstring_to_string(env, j_namespace);
         let path = jstring_to_string(env, j_path);
+        let channel = format!("{}:{}", namespace, path);
 
         let length = ((**env).GetArrayLength)(env, j_data) as usize;
         let elements = ((**env).GetByteArrayElements)(env, j_data, ptr::null_mut());
         if !elements.is_null() {
             let slice: &[u8] = std::slice::from_raw_parts(elements as *const u8, length);
-            crate::network::dispatch_mod_payload(&namespace, &path, slice);
+            let side = crate::mod_loader::running_side();
+            crate::mod_loader::dispatch_network_payload(&channel, slice, "", "", side);
             ((**env).ReleaseByteArrayElements)(env, j_data, elements, jni::JNI_ABORT);
+            drain_mod_network_outboxes(env, side);
         }
     }));
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onModCustomPayloadFrom(
+///     String channel, byte[] data, String senderName, String senderUuid, int side)
+///
+/// Dispatches an inbound mod payload with full sender identity and side context.
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onModCustomPayloadFrom(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    j_channel: jni::jstring,
+    j_data: jni::jbyteArray,
+    j_sender_name: jni::jstring,
+    j_sender_uuid: jni::jstring,
+    j_side: jni::jint,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if env.is_null() || j_channel.is_null() || j_data.is_null() {
+            return;
+        }
+
+        let channel = jstring_to_string(env, j_channel);
+        let sender_name = jstring_to_string(env, j_sender_name);
+        let sender_uuid = jstring_to_string(env, j_sender_uuid);
+        let side = crate::network::side_from_abi(j_side as u32)
+            .unwrap_or_else(crate::mod_loader::running_side);
+
+        let length = ((**env).GetArrayLength)(env, j_data) as usize;
+        let elements = ((**env).GetByteArrayElements)(env, j_data, ptr::null_mut());
+        if elements.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return;
+        }
+
+        {
+            let slice: &[u8] = std::slice::from_raw_parts(elements as *const u8, length);
+            crate::mod_loader::dispatch_network_payload(
+                &channel,
+                slice,
+                &sender_name,
+                &sender_uuid,
+                side,
+            );
+        }
+        ((**env).ReleaseByteArrayElements)(env, j_data, elements, jni::JNI_ABORT);
+
+        // Low-latency reply path: flush messages queued by the receive callback.
+        drain_mod_network_outboxes(env, side);
+    }));
+}
+
+/// Detects whether this JVM is a client or a dedicated server.
+///
+/// `REDOX_MC_SIDE=client|server` overrides detection for tests and launchers.
+/// Otherwise the game classloader is probed for the client-only
+/// `net/minecraft/client/Minecraft.class` resource without initializing classes.
+///
+/// # Safety
+/// `env` must be a valid JNI environment pointer (or null).
+pub(crate) unsafe fn detect_running_side(env: *mut jni::JNIEnv) -> crate::manifest::ModSide {
+    if let Ok(value) = std::env::var("REDOX_MC_SIDE") {
+        match value.to_ascii_lowercase().as_str() {
+            "client" => return crate::manifest::ModSide::Client,
+            "server" => return crate::manifest::ModSide::Server,
+            other => eprintln!(
+                "[redox-mc-loader] Ignoring invalid REDOX_MC_SIDE='{}' (expected 'client' or 'server').",
+                other
+            ),
+        }
+    }
+
+    if env.is_null() || !class_injector::is_class_loader_captured() {
+        return crate::manifest::ModSide::Server;
+    }
+
+    let loader = get_game_class_loader();
+    if loader.is_null() {
+        return crate::manifest::ModSide::Server;
+    }
+
+    let loader_class = ((**env).GetObjectClass)(env, loader);
+    if loader_class.is_null() {
+        clear_pending_exception(env);
+        return crate::manifest::ModSide::Server;
+    }
+
+    let method_name = CString::new("getResource").unwrap();
+    let method_sig = CString::new("(Ljava/lang/String;)Ljava/net/URL;").unwrap();
+    let method_id =
+        ((**env).GetMethodID)(env, loader_class, method_name.as_ptr(), method_sig.as_ptr());
+    if method_id.is_null() {
+        clear_pending_exception(env);
+        ((**env).DeleteLocalRef)(env, loader_class as jni::jobject);
+        return crate::manifest::ModSide::Server;
+    }
+
+    let resource = CString::new("net/minecraft/client/Minecraft.class").unwrap();
+    let j_resource = ((**env).NewStringUTF)(env, resource.as_ptr());
+    if j_resource.is_null() {
+        clear_pending_exception(env);
+        ((**env).DeleteLocalRef)(env, loader_class as jni::jobject);
+        return crate::manifest::ModSide::Server;
+    }
+
+    let args = [jni::jvalue {
+        l: j_resource as jni::jobject,
+    }];
+    let url = ((**env).CallObjectMethodA)(env, loader, method_id, args.as_ptr());
+
+    ((**env).DeleteLocalRef)(env, j_resource as jni::jobject);
+    ((**env).DeleteLocalRef)(env, loader_class as jni::jobject);
+    if (url as jni::jobject).is_null() {
+        clear_pending_exception(env);
+        crate::manifest::ModSide::Server
+    } else {
+        ((**env).DeleteLocalRef)(env, url as jni::jobject);
+        crate::manifest::ModSide::Client
+    }
+}
+
+unsafe fn clear_pending_exception(env: *mut jni::JNIEnv) {
+    if !env.is_null() && ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+        ((**env).ExceptionClear)(env);
+    }
+}
+
+/// Cached method ID for `ModNetworkBridge.sendModPayload(...)`.
+static SEND_MOD_PAYLOAD_METHOD: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+
+struct NetworkDrainContext {
+    env: *mut jni::JNIEnv,
+    class: jni::jclass,
+    method: jni::jmethodID,
+    origin_side: crate::manifest::ModSide,
+    sent: usize,
+    failed: usize,
+}
+
+unsafe fn get_send_mod_payload_method(env: *mut jni::JNIEnv, class: jni::jclass) -> jni::jmethodID {
+    let cached = SEND_MOD_PAYLOAD_METHOD.load(Ordering::Acquire);
+    if !cached.is_null() {
+        return cached as jni::jmethodID;
+    }
+
+    let name = CString::new("sendModPayload").unwrap();
+    let sig =
+        CString::new("(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;[BI)Z").unwrap();
+    let method = ((**env).GetStaticMethodID)(env, class, name.as_ptr(), sig.as_ptr());
+    if method.is_null() {
+        clear_pending_exception(env);
+        return ptr::null_mut();
+    }
+
+    match SEND_MOD_PAYLOAD_METHOD.compare_exchange(
+        ptr::null_mut(),
+        method,
+        Ordering::Release,
+        Ordering::Relaxed,
+    ) {
+        Ok(_) => method,
+        Err(existing) => existing as jni::jmethodID,
+    }
+}
+
+/// Drains every loaded mod's outbound network queue and forwards each message
+/// to `ModNetworkBridge.sendModPayload(...)`.
+///
+/// `origin_side` tells the Java bridge whether the message must travel
+/// server-to-client or client-to-server (important in integrated servers).
+///
+/// # Safety
+/// `env` must be a valid JNI environment pointer.
+pub(crate) unsafe fn drain_mod_network_outboxes(
+    env: *mut jni::JNIEnv,
+    origin_side: crate::manifest::ModSide,
+) {
+    if env.is_null() {
+        return;
+    }
+
+    let class = class_injector::get_mod_network_bridge_class();
+    if class.is_null() {
+        return;
+    }
+
+    let method = get_send_mod_payload_method(env, class);
+    if method.is_null() {
+        return;
+    }
+
+    let callbacks = crate::mod_loader::network_drain_callbacks();
+    for (id, drain) in callbacks {
+        let mut context = NetworkDrainContext {
+            env,
+            class,
+            method,
+            origin_side,
+            sent: 0,
+            failed: 0,
+        };
+
+        let status = drain(
+            network_outbound_visitor,
+            (&mut context as *mut NetworkDrainContext) as *mut c_void,
+        );
+
+        if let Err(safety_err) = crate::safety::check_ffi_status(&id, status) {
+            eprintln!(
+                "[redox-mc-loader] ERROR: Mod '{}' network outbox drain failed: {}",
+                id, safety_err
+            );
+        }
+        if context.sent > 0 {
+            println!(
+                "[redox-mc-loader] Mod '{}' sent {} outbound network message(s) from {:?}.",
+                id, context.sent, origin_side
+            );
+        }
+        if context.failed > 0 {
+            eprintln!(
+                "[redox-mc-loader] Mod '{}' failed to deliver {} outbound network message(s).",
+                id, context.failed
+            );
+        }
+    }
+}
+
+unsafe extern "C" fn network_outbound_visitor(
+    user_data: *mut c_void,
+    channel: redox_mc_abi::types::FfiStr,
+    target_kind: u32,
+    target_name: redox_mc_abi::types::FfiStr,
+    target_uuid: redox_mc_abi::types::FfiStr,
+    data: redox_mc_abi::types::FfiSlice<u8>,
+) -> redox_mc_abi::types::FfiStatus {
+    use redox_mc_abi::types::FfiStatus;
+
+    if user_data.is_null() {
+        return FfiStatus::NullPointer;
+    }
+    let context = &mut *(user_data as *mut NetworkDrainContext);
+
+    let Ok(channel) = channel.as_str() else {
+        context.failed += 1;
+        return FfiStatus::InvalidArgument;
+    };
+    if channel.is_empty() {
+        context.failed += 1;
+        return FfiStatus::InvalidArgument;
+    }
+
+    let target_name = target_name.as_str().unwrap_or("");
+    let target_uuid = target_uuid.as_str().unwrap_or("");
+    let data = data.as_slice();
+
+    let channel_c = match CString::new(channel) {
+        Ok(value) => value,
+        Err(_) => {
+            context.failed += 1;
+            return FfiStatus::InvalidArgument;
+        }
+    };
+    let target_name_c = CString::new(target_name).unwrap_or_default();
+    let target_uuid_c = CString::new(target_uuid).unwrap_or_default();
+
+    let env = context.env;
+    let j_channel = ((**env).NewStringUTF)(env, channel_c.as_ptr());
+    let j_target_name = ((**env).NewStringUTF)(env, target_name_c.as_ptr());
+    let j_target_uuid = ((**env).NewStringUTF)(env, target_uuid_c.as_ptr());
+    let j_data = bytes_to_jbyte_array(env, data);
+
+    if j_channel.is_null() || j_target_name.is_null() || j_target_uuid.is_null() || j_data.is_null()
+    {
+        clear_pending_exception(env);
+        delete_local_ref(env, j_channel as jni::jobject);
+        delete_local_ref(env, j_target_name as jni::jobject);
+        delete_local_ref(env, j_target_uuid as jni::jobject);
+        delete_local_ref(env, j_data as jni::jobject);
+        context.failed += 1;
+        return FfiStatus::GenericError;
+    }
+
+    let args = [
+        jni::jvalue {
+            l: j_channel as jni::jobject,
+        },
+        jni::jvalue {
+            i: target_kind as jni::jint,
+        },
+        jni::jvalue {
+            l: j_target_name as jni::jobject,
+        },
+        jni::jvalue {
+            l: j_target_uuid as jni::jobject,
+        },
+        jni::jvalue {
+            l: j_data as jni::jobject,
+        },
+        jni::jvalue {
+            i: crate::network::side_to_abi(context.origin_side) as jni::jint,
+        },
+    ];
+
+    let accepted =
+        ((**env).CallStaticBooleanMethodA)(env, context.class, context.method, args.as_ptr());
+
+    delete_local_ref(env, j_channel as jni::jobject);
+    delete_local_ref(env, j_target_name as jni::jobject);
+    delete_local_ref(env, j_target_uuid as jni::jobject);
+    delete_local_ref(env, j_data as jni::jobject);
+
+    if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+        clear_pending_exception(env);
+        context.failed += 1;
+        return FfiStatus::Success;
+    }
+
+    if accepted == jni::JNI_TRUE {
+        context.sent += 1;
+    } else {
+        context.failed += 1;
+    }
+
+    FfiStatus::Success
+}
+
+unsafe fn delete_local_ref(env: *mut jni::JNIEnv, reference: jni::jobject) {
+    if !reference.is_null() {
+        ((**env).DeleteLocalRef)(env, reference);
+    }
 }
 
 /// Converts a JNI jobjectArray of java/lang/String to a Rust Vec<String>.

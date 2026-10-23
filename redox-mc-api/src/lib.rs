@@ -5,6 +5,7 @@ pub mod block;
 pub mod event;
 pub mod item;
 pub mod macros;
+pub mod network;
 pub mod resource;
 
 pub use assets::{
@@ -21,6 +22,10 @@ pub use event::{CancellableEvent, Event, EventBus, EventPriority, EventResult};
 pub use item::{
     clear_registered_items, get_registered_items, register_item, ItemDefinition,
     FLAG_HAS_FINISH_USING, FLAG_HAS_USE, FLAG_HAS_USE_ON,
+};
+pub use network::{
+    clear_outbox, dispatch_received, drain_outbox, outbox_len, NetworkChannel, NetworkContext,
+    NetworkError, NetworkMessage, NetworkSide, PlayerId, SenderId,
 };
 pub use redox_mc_abi as abi;
 pub use redox_mc_abi::types;

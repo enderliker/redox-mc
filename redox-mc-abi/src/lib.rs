@@ -22,7 +22,9 @@ pub use memory::{
 };
 pub use types::{
     AbiVersion, FfiBuffer, FfiLogLevel, FfiModSide, FfiResult, FfiSlice, FfiSliceMut, FfiStatus,
-    FfiStr, FfiString,
+    FfiStr, FfiString, NetworkDispatchFn, NetworkOutboundVisitor, NetworkOutboxDrainFn,
+    NETWORK_SIDE_CLIENT, NETWORK_SIDE_SERVER, NETWORK_TARGET_BROADCAST, NETWORK_TARGET_PLAYER,
+    NETWORK_TARGET_SERVER,
 };
 pub use vtable::{LoaderContext, LoaderVTable, ModInitFn, ModVTable};
 

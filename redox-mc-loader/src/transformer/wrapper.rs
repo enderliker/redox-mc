@@ -186,6 +186,96 @@ fn push_call_original(
     }
 }
 
+/// Removes a redundant `StackMapTable` frame at instruction offset 0 and rebases
+/// the following frame.
+///
+/// `ristretto_classfile`'s serializer uses the previous frame's *byte offset*
+/// (`last_byte_offset == 0`) rather than a first-frame flag to decide whether a
+/// frame is encoded compactly or as a delta. When the first frame is at byte
+/// offset 0, the second frame is therefore serialized with an absolute offset
+/// instead of a delta, shifting every following frame by one and producing an
+/// unverifiable class file.
+///
+/// A `SameFrame` / `SameFrameExtended` at offset 0 is always identical to the
+/// implicit frame at method entry (JVMS §4.10.1.4), so dropping it and rebasing
+/// the next frame produces equivalent bytecode while avoiding the serializer
+/// defect.
+fn remove_redundant_entry_frame(frames: &mut Vec<StackFrame>) {
+    let Some(first) = frames.first() else {
+        return;
+    };
+    if first.offset_delta() != 0
+        || !matches!(
+            first,
+            StackFrame::SameFrame { .. } | StackFrame::SameFrameExtended { .. }
+        )
+    {
+        return;
+    }
+
+    frames.remove(0);
+    if let Some(next) = frames.first_mut() {
+        let absolute = next.offset_delta().saturating_add(1);
+        rebase_frame(next, absolute);
+    }
+}
+
+/// Rewrites the first frame's stored delta so that it encodes `absolute` as an
+/// absolute instruction offset, upgrading compact frame types when necessary.
+fn rebase_frame(frame: &mut StackFrame, absolute: u16) {
+    match frame {
+        StackFrame::SameFrame { frame_type } => {
+            if let Ok(compact) = u8::try_from(absolute) {
+                if compact <= 63 {
+                    *frame_type = compact;
+                    return;
+                }
+            }
+            *frame = StackFrame::SameFrameExtended {
+                frame_type: 251,
+                offset_delta: absolute,
+            };
+        }
+        StackFrame::SameLocals1StackItemFrame { frame_type, stack } => {
+            let compact = absolute.saturating_add(64);
+            if let Ok(compact) = u8::try_from(compact) {
+                if compact <= 127 {
+                    *frame_type = compact;
+                    return;
+                }
+            }
+            *frame = StackFrame::SameLocals1StackItemFrameExtended {
+                frame_type: 247,
+                offset_delta: absolute,
+                stack: stack.clone(),
+            };
+        }
+        StackFrame::SameLocals1StackItemFrameExtended { offset_delta, .. }
+        | StackFrame::AppendFrame { offset_delta, .. }
+        | StackFrame::ChopFrame { offset_delta, .. }
+        | StackFrame::FullFrame { offset_delta, .. }
+        | StackFrame::SameFrameExtended { offset_delta, .. } => {
+            *offset_delta = absolute;
+        }
+    }
+}
+
+/// Normalizes every `StackMapTable` in the class before serialization.
+fn normalize_stack_map_tables(class_file: &mut ClassFile<'static>) {
+    for method in &mut class_file.methods {
+        for attribute in &mut method.attributes {
+            let Attribute::Code { attributes, .. } = attribute else {
+                continue;
+            };
+            for code_attribute in attributes {
+                if let Attribute::StackMapTable { frames, .. } = code_attribute {
+                    remove_redundant_entry_frame(frames);
+                }
+            }
+        }
+    }
+}
+
 /// Applies wrapper method transformations to `class_file` for all matching hooks.
 ///
 /// Returns `Ok(true)` if at least one method was wrapped, `Ok(false)` otherwise.
@@ -193,6 +283,8 @@ pub fn apply_wrapper_hooks(
     class_file: &mut ClassFile<'static>,
     hooks: &[HookTarget],
 ) -> Result<bool, TransformerError> {
+    normalize_stack_map_tables(class_file);
+
     let mut modified = false;
 
     for hook in hooks {
@@ -396,4 +488,88 @@ pub fn apply_wrapper_hooks(
     }
 
     Ok(modified)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{rebase_frame, remove_redundant_entry_frame};
+    use ristretto_classfile::attributes::{StackFrame, VerificationType};
+
+    #[test]
+    fn redundant_entry_frame_is_removed_and_rebased() {
+        let mut frames = vec![
+            StackFrame::SameFrame { frame_type: 0 },
+            StackFrame::SameFrame { frame_type: 5 },
+            StackFrame::FullFrame {
+                frame_type: 255,
+                offset_delta: 2,
+                locals: vec![VerificationType::Integer],
+                stack: Vec::new(),
+            },
+        ];
+
+        remove_redundant_entry_frame(&mut frames);
+
+        assert_eq!(
+            frames,
+            vec![
+                StackFrame::SameFrame { frame_type: 6 },
+                StackFrame::FullFrame {
+                    frame_type: 255,
+                    offset_delta: 2,
+                    locals: vec![VerificationType::Integer],
+                    stack: Vec::new(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn non_zero_and_non_entry_frames_are_untouched() {
+        let mut frames = vec![
+            StackFrame::SameFrame { frame_type: 4 },
+            StackFrame::SameFrame { frame_type: 9 },
+        ];
+        let original = frames.clone();
+        remove_redundant_entry_frame(&mut frames);
+        assert_eq!(frames, original);
+
+        let mut frames = vec![
+            StackFrame::SameLocals1StackItemFrame {
+                frame_type: 64,
+                stack: vec![VerificationType::Integer],
+            },
+            StackFrame::SameFrame { frame_type: 9 },
+        ];
+        let original = frames.clone();
+        remove_redundant_entry_frame(&mut frames);
+        assert_eq!(frames, original);
+    }
+
+    #[test]
+    fn rebasing_upgrades_compact_frames_when_needed() {
+        let mut frame = StackFrame::SameFrame { frame_type: 5 };
+        rebase_frame(&mut frame, 100);
+        assert_eq!(
+            frame,
+            StackFrame::SameFrameExtended {
+                frame_type: 251,
+                offset_delta: 100
+            }
+        );
+
+        let mut frame = StackFrame::SameLocals1StackItemFrame {
+            frame_type: 65,
+            stack: vec![VerificationType::Integer],
+        };
+        rebase_frame(&mut frame, 100);
+        assert_eq!(
+            frame,
+            StackFrame::SameLocals1StackItemFrameExtended {
+                frame_type: 247,
+                offset_delta: 100,
+                stack: vec![VerificationType::Integer],
+            }
+        );
+    }
 }

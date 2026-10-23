@@ -49,10 +49,20 @@ pub trait VersionAdapter: Send + Sync {
     /// Canonical list of bytecode hook targets for this version
     fn hook_targets(&self) -> &'static [HookTarget];
 
-    /// Finds a hook target by internal class name (e.g. "net/minecraft/server/Bootstrap")
+    /// Client-only hook targets, which are absent from dedicated server jars.
+    ///
+    /// Adapters that support a graphical client override this to expose hooks
+    /// that must be transformed when the client classes are present.
+    fn client_hook_targets(&self) -> &'static [HookTarget] {
+        &[]
+    }
+
+    /// Finds a hook target by internal class name (e.g. "net/minecraft/server/Bootstrap"),
+    /// searching both server and client hook tables.
     fn find_hook(&self, class_name: &str) -> Option<&'static HookTarget> {
         self.hook_targets()
             .iter()
+            .chain(self.client_hook_targets())
             .find(|t| t.class_name == class_name)
     }
 

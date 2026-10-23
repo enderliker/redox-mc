@@ -445,6 +445,54 @@ pub enum FfiModSide {
     Server = 2,
 }
 
+/// ABI marker: the network callback is running on the dedicated/integrated server.
+pub const NETWORK_SIDE_SERVER: u32 = 0;
+/// ABI marker: the network callback is running on the client.
+pub const NETWORK_SIDE_CLIENT: u32 = 1;
+
+/// Outbound target: broadcast to every peer of the current side.
+pub const NETWORK_TARGET_BROADCAST: u32 = 0;
+/// Outbound target: a specific player, addressed by name and/or UUID.
+pub const NETWORK_TARGET_PLAYER: u32 = 1;
+/// Outbound target: the remote server (valid from the client side).
+pub const NETWORK_TARGET_SERVER: u32 = 2;
+
+/// Signature of the mod-exported function that receives an inbound mod payload.
+///
+/// Parameters:
+/// 1. Full channel identifier (`namespace:path`).
+/// 2. Borrowed payload bytes (valid only for the duration of the call).
+/// 3. Sender name (`"server"` for client-side inbound messages).
+/// 4. Sender UUID (empty for client-side inbound messages).
+/// 5. One of [`NETWORK_SIDE_SERVER`] / [`NETWORK_SIDE_CLIENT`].
+pub type NetworkDispatchFn =
+    unsafe extern "C" fn(FfiStr, FfiSlice<u8>, FfiStr, FfiStr, u32) -> FfiStatus;
+
+/// Signature of the visitor invoked by a mod when the loader drains its outbox.
+///
+/// Parameters:
+/// 1. Opaque loader-provided context pointer.
+/// 2. Full channel identifier (`namespace:path`).
+/// 3. One of the `NETWORK_TARGET_*` constants.
+/// 4. Target player name (empty for broadcast/server targets).
+/// 5. Target player UUID (empty for broadcast/server targets).
+/// 6. Borrowed payload bytes (valid only for the duration of the call).
+pub type NetworkOutboundVisitor = unsafe extern "C" fn(
+    *mut std::ffi::c_void,
+    FfiStr,
+    u32,
+    FfiStr,
+    FfiStr,
+    FfiSlice<u8>,
+) -> FfiStatus;
+
+/// Signature of the mod-exported function that drains queued outbound messages.
+///
+/// The mod must invoke `visitor` once per queued message and may free the
+/// message memory immediately after the visitor returns.
+pub type NetworkOutboxDrainFn =
+    unsafe extern "C" fn(NetworkOutboundVisitor, *mut std::ffi::c_void) -> FfiStatus;
+
 /// Log level severity for ABI logger callbacks.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -7,6 +7,17 @@ package net.redoxmc.bridge;
  * JVM Bootstrap ClassLoader search path, making it universally accessible.
  */
 public final class RedoxBridge {
+    /** ABI marker: network callback is running on the server. */
+    public static final int NETWORK_SIDE_SERVER = 0;
+    /** ABI marker: network callback is running on the client. */
+    public static final int NETWORK_SIDE_CLIENT = 1;
+    /** Outbound target: broadcast to every peer on the current side. */
+    public static final int NETWORK_TARGET_BROADCAST = 0;
+    /** Outbound target: a specific player. */
+    public static final int NETWORK_TARGET_PLAYER = 1;
+    /** Outbound target: the remote server. */
+    public static final int NETWORK_TARGET_SERVER = 2;
+
     private static volatile boolean initialized = false;
 
     // Private constructor to prevent instantiation
@@ -75,6 +86,22 @@ public final class RedoxBridge {
      * @param data raw payload byte content
      */
     public static native void onModCustomPayload(String namespace, String path, byte[] data);
+
+    /**
+     * Hook called when a mod network payload is received, with sender identity.
+     *
+     * @param channel full channel identifier (e.g. "testmod:data")
+     * @param data raw payload byte content
+     * @param senderName sender player name, or "server" for client-side inbound messages
+     * @param senderUuid sender UUID string, or empty for server-originated messages
+     * @param side one of {@link #NETWORK_SIDE_SERVER} or {@link #NETWORK_SIDE_CLIENT}
+     */
+    public static native void onModCustomPayloadFrom(String channel, byte[] data, String senderName, String senderUuid, int side);
+
+    /**
+     * Hook called at the start of every client tick to flush queued mod messages.
+     */
+    public static native void onClientTick();
 
     /**
      * Returns the computed registry content hash, or empty string if none.

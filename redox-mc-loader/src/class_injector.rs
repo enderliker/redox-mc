@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 // Global reference to the game's ClassLoader (captured from the first net/minecraft/ class)
 static GAME_CLASS_LOADER: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(ptr::null_mut());
+static MOD_NETWORK_BRIDGE_CLASS: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(ptr::null_mut());
 static FIRST_CAPTURED_CLASS: Mutex<Option<String>> = Mutex::new(None);
 static GAME_CLASSES_DEFINED: AtomicBool = AtomicBool::new(false);
 
@@ -83,6 +84,12 @@ pub fn is_class_loader_captured() -> bool {
 /// Returns the captured game ClassLoader as a JNI jobject.
 pub fn get_game_class_loader() -> jni::jobject {
     GAME_CLASS_LOADER.load(Ordering::Acquire) as jni::jobject
+}
+
+/// Returns the bridge-game `ModNetworkBridge` class as a JNI global reference,
+/// or null if the class has not been defined yet.
+pub fn get_mod_network_bridge_class() -> jni::jclass {
+    MOD_NETWORK_BRIDGE_CLASS.load(Ordering::Acquire) as jni::jclass
 }
 
 /// Returns the name of the first class that triggered classloader capture.
@@ -268,7 +275,22 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
 
     // 12. Mod network bridge: ModNetworkBridge
     let network_bridge_name = "net/redoxmc/bridge/network/ModNetworkBridge";
-    define_class(env, network_bridge_name, loader, MOD_NETWORK_BRIDGE_BYTES)?;
+    let network_bridge_class =
+        define_class(env, network_bridge_name, loader, MOD_NETWORK_BRIDGE_BYTES)?;
+    let network_bridge_global = ((**env).NewGlobalRef)(env, network_bridge_class);
+    if !network_bridge_global.is_null() {
+        match MOD_NETWORK_BRIDGE_CLASS.compare_exchange(
+            ptr::null_mut(),
+            network_bridge_global,
+            Ordering::Release,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => {}
+            Err(_) => {
+                ((**env).DeleteGlobalRef)(env, network_bridge_global);
+            }
+        }
+    }
     println!(
         "[redox-mc-loader] Defined network bridge class: {}",
         network_bridge_name

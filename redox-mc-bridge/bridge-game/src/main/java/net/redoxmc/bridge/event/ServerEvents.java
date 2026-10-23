@@ -12,7 +12,18 @@ import net.redoxmc.bridge.RedoxBridge;
  * allowing direct access to vanilla Minecraft classes without reflection.
  */
 public final class ServerEvents {
+    private static volatile MinecraftServer serverInstance;
+
     private ServerEvents() {}
+
+    /**
+     * Returns the most recently observed MinecraftServer instance, or null
+     * before the first server tick. Used by the network bridge to send
+     * clientbound mod payloads without relying on a static game singleton.
+     */
+    public static MinecraftServer getServer() {
+        return serverInstance;
+    }
 
     /**
      * Hook called from MinecraftServer.tickChildren() at ~20 Hz (every 50 ms).
@@ -20,6 +31,9 @@ public final class ServerEvents {
      * @param server The MinecraftServer instance executing the tick loop.
      */
     public static void onServerTick(MinecraftServer server) {
+        if (server != null) {
+            serverInstance = server;
+        }
         long tickCount = (server != null) ? (long) server.getTickCount() : 0L;
         RedoxBridge.onServerTick(tickCount);
     }

@@ -174,5 +174,20 @@ java -agentpath:"${AGENT_PATH_NATIVE}" \
     net.redoxmc.test.ModHandshakeTest
 
 echo ""
+echo "=== Running Test 9: Task 6.3 Typed Network Channels (Ping/Pong with Sender Identity) ==="
+NETWORK_TEST_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_network')
+mkdir -p "${NETWORK_TEST_DIR}/mods/test_mod"
+cp "${ROOT_DIR}/examples/test-mod/mod.toml" "${NETWORK_TEST_DIR}/mods/test_mod/"
+cp "${MOD_LIB}" "${NETWORK_TEST_DIR}/mods/test_mod/"
+
+cd "${NETWORK_TEST_DIR}"
+java -agentpath:"${AGENT_PATH_NATIVE}" \
+    -cp "${TEST_CLASSES_NATIVE}${CP_SEP}${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}${CP_SEP}${SERVER_JAR_NATIVE}${LIB_CP}" \
+    net.redoxmc.test.NetworkChannelTest
+cd "${ROOT_DIR}"
+rm -rf "${NETWORK_TEST_DIR}" 2>/dev/null || true
+echo "[TEST] PASS: Typed Rust network channels transported ping/pong/ack with sender identity."
+
+echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"
 

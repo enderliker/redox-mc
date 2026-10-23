@@ -1,5 +1,8 @@
 package net.redoxmc.bridge.event;
 
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundChatPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
@@ -53,5 +56,47 @@ public final class ServerEvents {
                 : "unknown";
         String message = (packet != null) ? packet.message() : "";
         return RedoxBridge.onServerChat(playerName, message);
+    }
+
+    /**
+     * Hook called at the entry of Commands.performPrefixedCommand().
+     *
+     * Handles Redox loader commands (currently {@code /redox reload}) and returns
+     * false to skip vanilla Brigadier dispatch for those commands. Every other
+     * command returns true and is executed unchanged.
+     *
+     * @param commands The command dispatcher instance (unused).
+     * @param source The command source (console, player, command block, or RCON).
+     * @param command The raw command string, with or without a leading slash.
+     * @return true to let vanilla handle the command, false if it was handled here.
+     */
+    public static boolean onPerformPrefixedCommand(Commands commands, CommandSourceStack source, String command) {
+        String normalized = (command != null) ? command.trim() : "";
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1).trim();
+        }
+
+        if (!normalized.equals("redox reload")) {
+            return true;
+        }
+
+        String result;
+        try {
+            result = RedoxBridge.reloadMods();
+        } catch (Throwable throwable) {
+            result = "Redox reload failed: " + throwable.getMessage();
+        }
+
+        if (result == null || result.isEmpty()) {
+            result = "Redox reload completed.";
+        }
+
+        final String message = result;
+        if (source != null) {
+            source.sendSuccess(() -> Component.literal(message), false);
+        } else {
+            System.out.println("[redox-mc-bridge] " + message);
+        }
+        return false;
     }
 }

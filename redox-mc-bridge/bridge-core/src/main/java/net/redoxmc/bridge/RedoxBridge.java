@@ -104,6 +104,18 @@ public final class RedoxBridge {
     public static native void onClientTick();
 
     /**
+     * Reloads every native mod from the {@code mods/} directory without
+     * restarting the JVM.
+     *
+     * New binaries are copied to {@code mod_cache/} before being loaded. The new
+     * callback generation is published atomically; previous libraries remain
+     * mapped so callbacks already in flight stay valid.
+     *
+     * @return a human-readable status summary for the command source.
+     */
+    public static native String reloadMods();
+
+    /**
      * Returns the computed registry content hash, or empty string if none.
      */
     public static native String getRegistryHash();

@@ -7,16 +7,22 @@ case "$(uname -s)" in
     CYGWIN*|MINGW*|MSYS*)
         AGENT_LIB_BASENAME="redox_mc_loader.dll"
         MOD_LIB_BASENAME="test_mod.dll"
+        RELOAD_V1_BASENAME="reload_mod_v1.dll"
+        RELOAD_V2_BASENAME="reload_mod_v2.dll"
         CP_SEP=";"
         ;;
     Darwin*)
         AGENT_LIB_BASENAME="libredox_mc_loader.dylib"
         MOD_LIB_BASENAME="libtest_mod.dylib"
+        RELOAD_V1_BASENAME="libreload_mod_v1.dylib"
+        RELOAD_V2_BASENAME="libreload_mod_v2.dylib"
         CP_SEP=":"
         ;;
     *)
         AGENT_LIB_BASENAME="libredox_mc_loader.so"
         MOD_LIB_BASENAME="libtest_mod.so"
+        RELOAD_V1_BASENAME="libreload_mod_v1.so"
+        RELOAD_V2_BASENAME="libreload_mod_v2.so"
         CP_SEP=":"
         ;;
 esac
@@ -50,6 +56,7 @@ echo "=== Building redox-mc-bridge and compiling agent ==="
 "${ROOT_DIR}/redox-mc-bridge/build.sh"
 cargo build -p redox-mc-loader
 cargo build -p test-mod
+cargo build -p redox-reload-fixture-v1 -p redox-reload-fixture-v2
 
 AGENT_LIB=$(find_library "${AGENT_LIB_BASENAME}")
 MOD_LIB=$(find_library "${MOD_LIB_BASENAME}")
@@ -211,6 +218,16 @@ java -agentpath:"${AGENT_PATH_NATIVE}" \
 cd "${ROOT_DIR}"
 rm -rf "${NETWORK_TEST_DIR}" 2>/dev/null || true
 echo "[TEST] PASS: Typed Rust network channels transported ping/pong/ack with sender identity."
+
+echo ""
+echo "=== Running Test 12: Task 7.1 Safe Hot Reload via /redox reload ==="
+RELOAD_V1_LIB=$(find_library "${RELOAD_V1_BASENAME}")
+RELOAD_V2_LIB=$(find_library "${RELOAD_V2_BASENAME}")
+AGENT_LIB="${AGENT_PATH_NATIVE}" \
+    RELOAD_MOD_V1_LIB="${RELOAD_V1_LIB}" \
+    RELOAD_MOD_V2_LIB="${RELOAD_V2_LIB}" \
+    BUNDLER_JAR="${BUNDLER_PATH_NATIVE}" \
+    "${PYTHON_CMD}" "${ROOT_DIR}/tests/test_hot_reload.py"
 
 echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"

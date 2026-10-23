@@ -2,12 +2,14 @@ pub mod adapter;
 pub mod bench;
 pub mod bridge_jni;
 pub mod class_injector;
+pub mod dispatcher;
 pub mod events;
 pub mod manifest;
 pub mod mod_loader;
 pub mod mod_resolver;
 pub mod network;
 pub mod registry;
+pub mod reload;
 pub mod safety;
 pub mod transformer;
 

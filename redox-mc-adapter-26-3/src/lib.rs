@@ -120,6 +120,19 @@ pub static HOOK_TARGETS: &[HookTarget] = &[
         post_bridge_method: None,
         post_bridge_desc: None,
     },
+    // 10. Command dispatch: handle `/redox reload` before Brigadier parses it.
+    // The bridge returns false to cancel vanilla dispatch for handled commands.
+    HookTarget {
+        class_name: "net/minecraft/commands/Commands",
+        method_name: "performPrefixedCommand",
+        method_desc: "(Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)V",
+        technique: HookTechnique::Wrapper,
+        bridge_class: "net/redoxmc/bridge/event/ServerEvents",
+        bridge_method: "onPerformPrefixedCommand",
+        bridge_desc: "(Lnet/minecraft/commands/Commands;Lnet/minecraft/commands/CommandSourceStack;Ljava/lang/String;)Z",
+        post_bridge_method: None,
+        post_bridge_desc: None,
+    },
 ];
 
 /// Client-only hook table for Minecraft 26.3.

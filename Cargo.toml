@@ -8,6 +8,8 @@ members = [
     "redox-mc-api-macros",
     "redox-mc-api",
     "examples/test-mod",
+    "redox-mc-loader/tests/fixtures/reload_mod_v1",
+    "redox-mc-loader/tests/fixtures/reload_mod_v2",
 ]
 resolver = "2"
 

@@ -83,6 +83,9 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
 
     let m_client_tick = CString::new("onClientTick").unwrap();
 
+    let m_reload = CString::new("reloadMods").unwrap();
+    let sig_reload = CString::new("()Ljava/lang/String;").unwrap();
+
     let m_get_hash = CString::new("getRegistryHash").unwrap();
     let sig_get_hash = CString::new("()Ljava/lang/String;").unwrap();
 
@@ -196,6 +199,11 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_client_tick.as_ptr() as *mut _,
             signature: sig_void.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onClientTick as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_reload.as_ptr() as *mut _,
+            signature: sig_reload.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_reloadMods as *mut _,
         },
         jni::JNINativeMethod {
             name: m_get_hash.as_ptr() as *mut _,

@@ -1,0 +1,11 @@
+[package]
+name = "redox-reload-fixture-v2"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "reload_mod_v2"
+crate-type = ["cdylib"]
+
+[dependencies]
+redox-mc-abi = { path = "../../../../redox-mc-abi" }

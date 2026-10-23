@@ -19,6 +19,7 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "1.1"
 semver = { version = "1.0", features = ["serde"] }
 libloading = "0.9"
+arc-swap = "1.7"
 redox-mc-adapter-api = { path = "../redox-mc-adapter-api" }
 redox-mc-adapter-26-3 = { path = "../redox-mc-adapter-26-3", optional = true }
 redox-mc-abi = { path = "../redox-mc-abi" }

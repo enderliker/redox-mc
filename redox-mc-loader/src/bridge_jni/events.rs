@@ -107,6 +107,25 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onClientTick(
     }));
 }
 
+/// JNI native: net.redoxmc.bridge.RedoxBridge.reloadMods()
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_reloadMods(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+) -> jni::jstring {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let message = match crate::reload::reload_mods() {
+            Ok(outcome) => outcome.summary(),
+            Err(err) => format!("Redox reload failed: {err}"),
+        };
+        super::strings::string_to_jstring(env, message)
+    }));
+    result.unwrap_or(std::ptr::null_mut())
+}
+
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onServerChat(String playerName, String message)
 ///
 /// # Safety

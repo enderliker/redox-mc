@@ -587,12 +587,12 @@
 **Description:** Implementar en `redox-mc-loader` el patrón de recarga segura: ante una recompilación del mod, copiar el binario a un archivo temporal (`mod_cache/mod_<timestamp>.so` o `.dll`), cargarlo con `libloading` y actualizar atómicamente la tabla de callbacks en memoria (`ArcSwap`). Omitir deliberadamente `dlclose` sobre la versión anterior para evitar crashes por destructores de thread-locals de Rust, closures colgantes y bloqueos de archivo en Windows (usando el soporte Windows de la Tarea 4.4).
 
 **Acceptance criteria:**
-- [ ] Recompilar un mod y ejecutar `/redox reload`: la nueva lógica toma efecto sin reiniciar la JVM ni desconectar clientes.
-- [ ] No se producen crashes al llamar callbacks tras la recarga.
-- [ ] En Windows, el binario del proyecto original no queda bloqueado por el proceso de la JVM.
+- [x] Recompilar un mod y ejecutar `/redox reload`: la nueva lógica toma efecto sin reiniciar la JVM ni desconectar clientes.
+- [x] No se producen crashes al llamar callbacks tras la recarga.
+- [x] En Windows, el binario del proyecto original no queda bloqueado por el proceso de la JVM.
 
 **Verification:**
-- [ ] Manual check: Modificar el mensaje de un evento de chat en vivo, recargar y confirmar el nuevo mensaje.
+- [x] Manual check: Modificar el mensaje de un evento de chat en vivo, recargar y confirmar el nuevo mensaje (automatizado en `tests/test_hot_reload.py`: v1 cancela mensajes con `!` y v2 con `?` tras `/redox reload`, con el servidor headless aún respondiendo).
 
 **Dependencies:** Task 6.3, Task 1.6, Task 4.4
 

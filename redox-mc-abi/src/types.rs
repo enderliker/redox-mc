@@ -488,10 +488,16 @@ pub type NetworkOutboundVisitor = unsafe extern "C" fn(
 
 /// Signature of the mod-exported function that drains queued outbound messages.
 ///
+/// Parameters:
+/// 1. One of [`NETWORK_SIDE_SERVER`] / [`NETWORK_SIDE_CLIENT`]. Only messages
+///    queued for this side are drained.
+/// 2. Visitor invoked once per queued message.
+/// 3. Opaque loader-provided context pointer forwarded to the visitor.
+///
 /// The mod must invoke `visitor` once per queued message and may free the
 /// message memory immediately after the visitor returns.
 pub type NetworkOutboxDrainFn =
-    unsafe extern "C" fn(NetworkOutboundVisitor, *mut std::ffi::c_void) -> FfiStatus;
+    unsafe extern "C" fn(u32, NetworkOutboundVisitor, *mut std::ffi::c_void) -> FfiStatus;
 
 /// Log level severity for ABI logger callbacks.
 #[repr(u8)]

@@ -93,6 +93,9 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
     let m_get_mod_versions = CString::new("getLoadedModVersions").unwrap();
     let sig_get_mod_versions = CString::new("()[Ljava/lang/String;").unwrap();
 
+    let m_get_manifest = CString::new("getHandshakeManifest").unwrap();
+    let sig_get_manifest = CString::new("()[Ljava/lang/String;").unwrap();
+
     let m_val_handshake = CString::new("validateClientHandshake").unwrap();
     let sig_val_handshake = CString::new(
         "(Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;)Ljava/lang/String;",
@@ -209,6 +212,11 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_get_mod_versions.as_ptr() as *mut _,
             signature: sig_get_mod_versions.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_getLoadedModVersions as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_get_manifest.as_ptr() as *mut _,
+            signature: sig_get_manifest.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_getHandshakeManifest as *mut _,
         },
         jni::JNINativeMethod {
             name: m_val_handshake.as_ptr() as *mut _,
@@ -733,6 +741,13 @@ unsafe fn string_vec_to_jobject_array(
     arr
 }
 
+/// Converts a Rust `String` into a JNI string, returning null if the string
+/// contains an interior NUL byte.
+unsafe fn string_to_jstring(env: *mut jni::JNIEnv, value: String) -> jni::jstring {
+    let c_value = CString::new(value).unwrap_or_default();
+    ((**env).NewStringUTF)(env, c_value.as_ptr())
+}
+
 /// JNI native: net.redoxmc.bridge.RedoxBridge.getVirtualResource(String type, String namespace, String path)
 ///
 /// # Safety
@@ -1072,6 +1087,7 @@ pub(crate) unsafe fn drain_mod_network_outboxes(
     }
 
     let callbacks = crate::mod_loader::network_drain_callbacks();
+    let abi_side = crate::network::side_to_abi(origin_side);
     for (id, drain) in callbacks {
         let mut context = NetworkDrainContext {
             env,
@@ -1083,6 +1099,7 @@ pub(crate) unsafe fn drain_mod_network_outboxes(
         };
 
         let status = drain(
+            abi_side,
             network_outbound_visitor,
             (&mut context as *mut NetworkDrainContext) as *mut c_void,
         );
@@ -1262,7 +1279,7 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getLoadedModId
     _class: jni::jclass,
 ) -> jni::jobjectArray {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mods = crate::mod_loader::get_loaded_mods_info();
+        let mods = crate::mod_loader::get_handshake_mods_info();
         let ids: Vec<String> = mods.into_iter().map(|(id, _)| id).collect();
         string_vec_to_jobject_array(env, &ids)
     }));
@@ -1279,9 +1296,36 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getLoadedModVe
     _class: jni::jclass,
 ) -> jni::jobjectArray {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mods = crate::mod_loader::get_loaded_mods_info();
+        let mods = crate::mod_loader::get_handshake_mods_info();
         let versions: Vec<String> = mods.into_iter().map(|(_, ver)| ver).collect();
         string_vec_to_jobject_array(env, &versions)
+    }));
+    result.unwrap_or(ptr::null_mut())
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.getHandshakeManifest()
+///
+/// Returns a single consistent snapshot shaped as `[hash, id0, version0, ...]`.
+/// The mod list is filtered to `side = "both"` mods, which are the only ones the
+/// remote side must also have installed.
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_getHandshakeManifest(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+) -> jni::jobjectArray {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let hash = crate::registry::get_registry_hash().unwrap_or_default();
+        let mods = crate::mod_loader::get_handshake_mods_info();
+        let mut manifest = Vec::with_capacity(1 + mods.len() * 2);
+        manifest.push(hash);
+        for (id, version) in mods {
+            manifest.push(id);
+            manifest.push(version);
+        }
+        string_vec_to_jobject_array(env, &manifest)
     }));
     result.unwrap_or(ptr::null_mut())
 }
@@ -1302,6 +1346,13 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_validateClient
         let client_hash = jstring_to_string(env, j_client_hash);
         let client_mod_ids = jobject_array_to_string_vec(env, j_client_mod_ids);
         let client_mod_versions = jobject_array_to_string_vec(env, j_client_mod_versions);
+        if client_mod_ids.len() != client_mod_versions.len() {
+            return string_to_jstring(
+                env,
+                "Malformed client handshake: mod id and version arrays differ in length."
+                    .to_string(),
+            );
+        }
 
         let client_mods: Vec<crate::network::handshake::HandshakeModInfo> = client_mod_ids
             .into_iter()
@@ -1311,7 +1362,7 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_validateClient
 
         let server_hash = crate::registry::get_registry_hash().unwrap_or_default();
         let server_mods: Vec<crate::network::handshake::HandshakeModInfo> =
-            crate::mod_loader::get_loaded_mods_info()
+            crate::mod_loader::get_handshake_mods_info()
                 .into_iter()
                 .map(|(id, version)| crate::network::handshake::HandshakeModInfo { id, version })
                 .collect();
@@ -1323,10 +1374,7 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_validateClient
             &client_mods,
         ) {
             Ok(()) => ptr::null_mut(),
-            Err(reason) => {
-                let c_reason = CString::new(reason).unwrap_or_default();
-                ((**env).NewStringUTF)(env, c_reason.as_ptr())
-            }
+            Err(reason) => string_to_jstring(env, reason),
         }
     }));
     result.unwrap_or(ptr::null_mut())

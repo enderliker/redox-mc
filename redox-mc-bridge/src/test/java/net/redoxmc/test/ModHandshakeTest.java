@@ -6,148 +6,277 @@ import java.util.List;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
-import net.minecraft.server.network.ConfigurationTask;
 import net.redoxmc.bridge.RedoxBridge;
 import net.redoxmc.bridge.network.ModHandshakeConfigurationTask;
+import net.redoxmc.bridge.network.ModHandshakePayload;
 import net.redoxmc.bridge.network.ModRawPayload;
 
+/**
+ * Integration test for the CONFIGURATION-phase mod handshake.
+ *
+ * <p>Run twice by the integration runner: once from a directory without
+ * {@code mods/} (vanilla bypass path) and once from a directory containing the
+ * example test mod (request/response path).</p>
+ */
 public class ModHandshakeTest {
     public static void main(String[] args) throws Exception {
-        System.out.println("[TEST] Starting ModHandshakeTest for Task 6.2...");
+        System.out.println("[TEST] Starting ModHandshakeTest...");
 
         RedoxBridge.ensureInitialized();
+        RedoxBridge.onBootstrapEntry();
 
-        // 1. Verify ModHandshakeConfigurationTask type
+        // 1. Configuration task type.
         System.out.println("[TEST] Step 1: Checking configuration task type...");
         if (!ModHandshakeConfigurationTask.TYPE.id().equals("redox:mod_handshake")) {
             throw new AssertionError("FAIL: Unexpected task type: " + ModHandshakeConfigurationTask.TYPE);
         }
         System.out.println("[TEST] PASS: Configuration task type verified.");
 
-        // 2. Test RedoxBridge native handshake validation methods
-        System.out.println("[TEST] Step 2: Testing RedoxBridge.validateClientHandshake via JNI...");
-        String serverHash = RedoxBridge.getRegistryHash();
-        String[] serverModIds = RedoxBridge.getLoadedModIds();
-        String[] serverModVersions = RedoxBridge.getLoadedModVersions();
-        System.out.println("[TEST] Server registry hash: '" + serverHash + "', loaded mods: " + serverModIds.length);
-
-        // Matching credentials -> null (success)
-        String validRes = RedoxBridge.validateClientHandshake(serverHash, serverModIds, serverModVersions);
-        if (validRes != null) {
-            throw new AssertionError("FAIL: Expected null for matching handshake, got error: " + validRes);
+        // 2. The native manifest is a consistent snapshot: [hash, id, version, ...].
+        System.out.println("[TEST] Step 2: Verifying the native handshake manifest...");
+        String[] manifest = RedoxBridge.getHandshakeManifest();
+        if (manifest == null || manifest.length == 0) {
+            throw new AssertionError("FAIL: getHandshakeManifest() returned an empty array");
         }
-        System.out.println("[TEST] PASS: Matching credentials validated cleanly.");
-
-        // Hash mismatch
-        if (serverHash != null && !serverHash.isEmpty()) {
-            String mismatchRes = RedoxBridge.validateClientHandshake("corrupted_hash", serverModIds, serverModVersions);
-            if (mismatchRes == null || !mismatchRes.contains("Mismatched registry content hash")) {
-                throw new AssertionError("FAIL: Expected hash mismatch error, got: " + mismatchRes);
+        if ((manifest.length - 1) % 2 != 0) {
+            throw new AssertionError("FAIL: Manifest length is not 1 + 2n: " + manifest.length);
+        }
+        ModHandshakePayload local = ModHandshakePayload.local();
+        if (!local.registryHash().equals(manifest[0])) {
+            throw new AssertionError("FAIL: Manifest hash does not match local payload hash");
+        }
+        if (local.modCount() != (manifest.length - 1) / 2) {
+            throw new AssertionError(
+                "FAIL: Manifest mod count " + ((manifest.length - 1) / 2)
+                    + " does not match payload count " + local.modCount()
+            );
+        }
+        String[] localIds = local.modIds();
+        String[] localVersions = local.modVersions();
+        for (int i = 0; i < local.modCount(); i++) {
+            if (!localIds[i].equals(manifest[1 + i * 2]) || !localVersions[i].equals(manifest[2 + i * 2])) {
+                throw new AssertionError("FAIL: Manifest entry " + i + " does not match the payload");
             }
-            System.out.println("[TEST] PASS: Hash mismatch rejected with: " + mismatchRes);
+        }
+        System.out.println(
+            "[TEST] PASS: Manifest verified (hash='" + local.registryHash()
+                + "', mods=" + local.modCount() + ")."
+        );
+
+        // 3. Round-trip through the shared wire format.
+        System.out.println("[TEST] Step 3: Verifying handshake payload round-trip...");
+        ModHandshakePayload decoded = ModHandshakePayload.decode(local.encode());
+        if (!decoded.registryHash().equals(local.registryHash())
+                || decoded.modCount() != local.modCount()) {
+            throw new AssertionError("FAIL: Handshake payload round-trip mismatch");
+        }
+        System.out.println("[TEST] PASS: Handshake payload round-trip verified.");
+
+        // 4. Native validation accepts the local credentials.
+        System.out.println("[TEST] Step 4: Validating the local credentials through JNI...");
+        String validationError = RedoxBridge.validateClientHandshake(
+            local.registryHash(), local.modIds(), local.modVersions()
+        );
+        if (validationError != null) {
+            throw new AssertionError("FAIL: Local credentials were rejected: " + validationError);
+        }
+        String lengthError = RedoxBridge.validateClientHandshake(
+            local.registryHash(),
+            local.modCount() == 0 ? new String[] { "extra" } : local.modIds(),
+            new String[0]
+        );
+        if (lengthError == null || !lengthError.contains("differ in length")) {
+            throw new AssertionError("FAIL: Expected a length mismatch error, got: " + lengthError);
+        }
+        System.out.println("[TEST] PASS: Native validation verified.");
+
+        // 5. Negative validation cases that can be exercised with this server.
+        System.out.println("[TEST] Step 5: Checking native rejection paths...");
+        if (!local.registryHash().isEmpty()) {
+            String mismatch = RedoxBridge.validateClientHandshake(
+                "corrupted_hash", local.modIds(), local.modVersions()
+            );
+            if (mismatch == null || !mismatch.contains("Mismatched registry content hash")) {
+                throw new AssertionError("FAIL: Expected hash mismatch error, got: " + mismatch);
+            }
+            System.out.println("[TEST] PASS: Hash mismatch rejected.");
+        } else {
+            System.out.println("[TEST] SKIP: No registry content, hash mismatch is not applicable.");
         }
 
-        // Missing mod
-        if (serverModIds != null && serverModIds.length > 0) {
-            String missingModRes = RedoxBridge.validateClientHandshake(serverHash, new String[0], new String[0]);
-            if (missingModRes == null || !missingModRes.contains("Missing required mod")) {
-                throw new AssertionError("FAIL: Expected missing mod error, got: " + missingModRes);
+        if (local.modCount() > 0) {
+            String missing = RedoxBridge.validateClientHandshake(
+                local.registryHash(), new String[0], new String[0]
+            );
+            if (missing == null || !missing.contains("Missing required mod")) {
+                throw new AssertionError("FAIL: Expected missing mod error, got: " + missing);
             }
-            System.out.println("[TEST] PASS: Missing mod rejected with: " + missingModRes);
 
-            // Incompatible version
-            String[] wrongVersions = new String[serverModVersions.length];
+            String[] wrongVersions = new String[local.modCount()];
             for (int i = 0; i < wrongVersions.length; i++) {
                 wrongVersions[i] = "999.0.0";
             }
-            String wrongVerRes = RedoxBridge.validateClientHandshake(serverHash, serverModIds, wrongVersions);
-            if (wrongVerRes == null || !wrongVerRes.contains("Incompatible version")) {
-                throw new AssertionError("FAIL: Expected incompatible version error, got: " + wrongVerRes);
+            String wrongVersion = RedoxBridge.validateClientHandshake(
+                local.registryHash(), local.modIds(), wrongVersions
+            );
+            if (wrongVersion == null || !wrongVersion.contains("Incompatible version")) {
+                throw new AssertionError("FAIL: Expected version mismatch error, got: " + wrongVersion);
             }
-            System.out.println("[TEST] PASS: Version mismatch rejected with: " + wrongVerRes);
+
+            String[] duplicateIds = new String[local.modCount() + 1];
+            String[] duplicateVersions = new String[local.modCount() + 1];
+            for (int i = 0; i < local.modCount(); i++) {
+                duplicateIds[i] = localIds[i];
+                duplicateVersions[i] = localVersions[i];
+            }
+            duplicateIds[local.modCount()] = localIds[0];
+            duplicateVersions[local.modCount()] = localVersions[0];
+            String duplicate = RedoxBridge.validateClientHandshake(
+                local.registryHash(), duplicateIds, duplicateVersions
+            );
+            if (duplicate == null || !duplicate.contains("duplicate mod")) {
+                throw new AssertionError("FAIL: Expected duplicate mod error, got: " + duplicate);
+            }
+            System.out.println("[TEST] PASS: Missing, version-mismatch, and duplicate mods rejected.");
+        } else {
+            System.out.println("[TEST] SKIP: No mods loaded, mod rejection paths are not applicable.");
         }
 
-        // 3. Test ModHandshakeConfigurationTask start packet emission
-        System.out.println("[TEST] Step 3: Testing ModHandshakeConfigurationTask packet flow...");
+        // 6. Task lifecycle: bypass when there is nothing to negotiate, otherwise
+        //    emit exactly one request and accept the matching response.
+        System.out.println("[TEST] Step 6: Exercising ModHandshakeConfigurationTask...");
         List<Packet<?>> sentPackets = new ArrayList<>();
         ModHandshakeConfigurationTask task = new ModHandshakeConfigurationTask(null);
-
         task.start(sentPackets::add);
 
-        if (serverModIds != null && serverModIds.length > 0) {
-            if (sentPackets.isEmpty()) {
-                throw new AssertionError("FAIL: No handshake request packet sent when server has mods!");
-            }
-            Packet<?> packet = sentPackets.get(0);
-            if (!(packet instanceof ClientboundCustomPayloadPacket customPacket)) {
-                throw new AssertionError("FAIL: Expected ClientboundCustomPayloadPacket, got: " + packet.getClass());
-            }
-            if (!(customPacket.payload() instanceof ModRawPayload modPayload)) {
-                throw new AssertionError("FAIL: Expected ModRawPayload, got: " + customPacket.payload().getClass());
-            }
-            if (!modPayload.id().equals(ModHandshakeConfigurationTask.HANDSHAKE_REQUEST_CHANNEL)) {
-                throw new AssertionError("FAIL: Unexpected channel: " + modPayload.id());
-            }
-            System.out.println("[TEST] PASS: Handshake request packet format verified.");
-        } else {
+        boolean needsHandshake = !local.registryHash().isEmpty() || local.modCount() > 0;
+        if (!needsHandshake) {
             if (!task.isFinished()) {
-                throw new AssertionError("FAIL: Task should finish immediately if server has 0 mods!");
+                throw new AssertionError("FAIL: Task must finish immediately when there is nothing to negotiate");
+            }
+            if (!sentPackets.isEmpty()) {
+                throw new AssertionError("FAIL: Vanilla bypass must not send a handshake request");
             }
             System.out.println("[TEST] PASS: Vanilla server bypass verified.");
+        } else {
+            if (task.isFinished()) {
+                throw new AssertionError("FAIL: Task must wait for the client response");
+            }
+            if (sentPackets.size() != 1) {
+                throw new AssertionError("FAIL: Expected exactly one request, got " + sentPackets.size());
+            }
+            if (!(sentPackets.get(0) instanceof ClientboundCustomPayloadPacket customPacket)
+                    || !(customPacket.payload() instanceof ModRawPayload requestPayload)) {
+                throw new AssertionError("FAIL: Request is not a ModRawPayload custom payload");
+            }
+            if (!requestPayload.id().equals(ModHandshakeConfigurationTask.HANDSHAKE_REQUEST_CHANNEL)) {
+                throw new AssertionError("FAIL: Unexpected request channel: " + requestPayload.id());
+            }
+            ModHandshakePayload request = ModHandshakePayload.decode(requestPayload.data());
+            if (!request.registryHash().equals(local.registryHash())
+                    || request.modCount() != local.modCount()) {
+                throw new AssertionError("FAIL: Request does not carry the local manifest");
+            }
+
+            task.handleClientResponse(local.encode());
+            if (!task.isFinished()) {
+                throw new AssertionError("FAIL: Task did not finish after a valid response");
+            }
+            System.out.println("[TEST] PASS: Request/response lifecycle verified.");
         }
 
-        // 4. Test explicit serialization and deserialization of mod handshake packets
-        System.out.println("[TEST] Step 4: Testing handshake request and response wire formats...");
-        FriendlyByteBuf mockReqBuf = new FriendlyByteBuf(Unpooled.buffer());
-        mockReqBuf.writeUtf("simulated_server_hash_xyz");
-        mockReqBuf.writeVarInt(2);
-        mockReqBuf.writeUtf("testmod");
-        mockReqBuf.writeUtf("0.1.0");
-        mockReqBuf.writeUtf("othermod");
-        mockReqBuf.writeUtf("1.2.3");
-
-        byte[] reqData = new byte[mockReqBuf.readableBytes()];
-        mockReqBuf.readBytes(reqData);
-        ModRawPayload reqPayload = new ModRawPayload(ModHandshakeConfigurationTask.HANDSHAKE_REQUEST_CHANNEL, reqData);
-
-        if (!reqPayload.id().equals(ModHandshakeConfigurationTask.HANDSHAKE_REQUEST_CHANNEL)) {
-            throw new AssertionError("FAIL: Request channel mismatch!");
+        // 7. Timeout is fail-closed: tick() returns true and the task is finished.
+        System.out.println("[TEST] Step 7: Verifying the handshake timeout...");
+        ModHandshakeConfigurationTask timeoutTask = new ModHandshakeConfigurationTask(null);
+        List<Packet<?>> timeoutPackets = new ArrayList<>();
+        timeoutTask.start(timeoutPackets::add);
+        if (needsHandshake) {
+            boolean tickResult = false;
+            for (int i = 0; i <= 301; i++) {
+                tickResult = timeoutTask.tick();
+            }
+            if (!tickResult || !timeoutTask.isFinished()) {
+                throw new AssertionError("FAIL: Timed-out task must report finished from tick()");
+            }
+            System.out.println("[TEST] PASS: Timeout is fail-closed.");
+        } else {
+            System.out.println("[TEST] SKIP: Bypass task finishes before the timeout applies.");
         }
 
-        FriendlyByteBuf parsedReq = new FriendlyByteBuf(Unpooled.wrappedBuffer(reqPayload.data()));
-        String parsedHash = parsedReq.readUtf();
-        int parsedCount = parsedReq.readVarInt();
-        if (!"simulated_server_hash_xyz".equals(parsedHash) || parsedCount != 2) {
-            throw new AssertionError("FAIL: Request wire format parsing failed!");
-        }
-        System.out.println("[TEST] PASS: Handshake request wire format verified: hash=" + parsedHash + ", count=" + parsedCount);
-
-        FriendlyByteBuf mockRespBuf = new FriendlyByteBuf(Unpooled.buffer());
-        mockRespBuf.writeUtf("simulated_server_hash_xyz");
-        mockRespBuf.writeVarInt(2);
-        mockRespBuf.writeUtf("testmod");
-        mockRespBuf.writeUtf("0.1.0");
-        mockRespBuf.writeUtf("othermod");
-        mockRespBuf.writeUtf("1.2.3");
-
-        byte[] respData = new byte[mockRespBuf.readableBytes()];
-        mockRespBuf.readBytes(respData);
-        ModRawPayload respPayload = new ModRawPayload(ModHandshakeConfigurationTask.HANDSHAKE_RESPONSE_CHANNEL, respData);
-
-        if (!respPayload.id().equals(ModHandshakeConfigurationTask.HANDSHAKE_RESPONSE_CHANNEL)) {
-            throw new AssertionError("FAIL: Response channel mismatch!");
-        }
-
-        FriendlyByteBuf parsedResp = new FriendlyByteBuf(Unpooled.wrappedBuffer(respPayload.data()));
-        String respHash = parsedResp.readUtf();
-        int respCount = parsedResp.readVarInt();
-        if (!"simulated_server_hash_xyz".equals(respHash) || respCount != 2) {
-            throw new AssertionError("FAIL: Response wire format parsing failed!");
-        }
-        System.out.println("[TEST] PASS: Handshake response wire format verified: hash=" + respHash + ", count=" + respCount);
+        // 8. Malformed wire data must be rejected by the bounded decoder.
+        System.out.println("[TEST] Step 8: Verifying malformed handshake rejection...");
+        expectDecodeFailure(duplicateWire(), "duplicate mod id");
+        expectDecodeFailure(trailingWire(local), "trailing bytes");
+        expectDecodeFailure(tooManyModsWire(), "invalid handshake mod count");
+        expectDecodeFailure(emptyIdWire(), "mod id must not be empty");
+        expectDecodeFailure(oversizedHashWire(), "registry hash");
+        System.out.println("[TEST] PASS: Malformed handshake payloads rejected.");
 
         System.out.println("[TEST] ========================================================");
-        System.out.println("[TEST] ALL CHECKS PASSED SUCCESSFULLY FOR TASK 6.2!");
+        System.out.println("[TEST] ALL HANDSHAKE CHECKS PASSED!");
         System.out.println("[TEST] ========================================================");
+    }
+
+    private static byte[] duplicateWire() {
+        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+        buf.writeUtf("hash");
+        buf.writeVarInt(2);
+        buf.writeUtf("testmod");
+        buf.writeUtf("0.1.0");
+        buf.writeUtf("testmod");
+        buf.writeUtf("0.1.0");
+        return drain(buf);
+    }
+
+    private static byte[] trailingWire(ModHandshakePayload local) {
+        byte[] encoded = local.encode();
+        byte[] withTrailing = new byte[encoded.length + 1];
+        System.arraycopy(encoded, 0, withTrailing, 0, encoded.length);
+        withTrailing[encoded.length] = 0x7F;
+        return withTrailing;
+    }
+
+    private static byte[] tooManyModsWire() {
+        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+        buf.writeUtf("hash");
+        buf.writeVarInt(ModHandshakePayload.MAX_MODS + 1);
+        return drain(buf);
+    }
+
+    private static byte[] emptyIdWire() {
+        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+        buf.writeUtf("hash");
+        buf.writeVarInt(1);
+        buf.writeUtf("");
+        buf.writeUtf("0.1.0");
+        return drain(buf);
+    }
+
+    private static byte[] oversizedHashWire() {
+        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+        buf.writeUtf("x".repeat(ModHandshakePayload.MAX_HASH_LENGTH + 1));
+        buf.writeVarInt(0);
+        return drain(buf);
+    }
+
+    private static byte[] drain(FriendlyByteBuf buf) {
+        byte[] bytes = new byte[buf.readableBytes()];
+        buf.readBytes(bytes);
+        return bytes;
+    }
+
+    private static void expectDecodeFailure(byte[] data, String expectedMessage) {
+        try {
+            ModHandshakePayload.decode(data);
+            throw new AssertionError("FAIL: Expected decode failure containing '" + expectedMessage + "'");
+        } catch (IllegalArgumentException expected) {
+            if (expected.getMessage() == null || !expected.getMessage().contains(expectedMessage)) {
+                throw new AssertionError(
+                    "FAIL: Expected message containing '" + expectedMessage
+                        + "', got: " + expected.getMessage(),
+                    expected
+                );
+            }
+        }
     }
 }

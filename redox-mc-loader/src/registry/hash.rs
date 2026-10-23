@@ -162,6 +162,24 @@ pub fn compute_full_registry_hash(
     hasher.finalize_hex()
 }
 
+/// Computes the registry content hash, returning `None` when no custom content
+/// was registered.
+///
+/// An empty registry must not produce the SHA-256 digest of an empty input
+/// (`e3b0c442...`), because that would make every vanilla server require a
+/// handshake with a hash no client can produce unless it also registers
+/// nothing. `None` is the canonical "no custom content" marker.
+pub fn compute_registry_content_hash(
+    items: &[RegisteredItemEntry],
+    blocks: &[RegisteredBlockEntry],
+) -> Option<String> {
+    if items.is_empty() && blocks.is_empty() {
+        None
+    } else {
+        Some(compute_full_registry_hash(items, blocks))
+    }
+}
+
 static REGISTRY_HASH: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// Returns the computed registry content hash, if finalized.
@@ -172,4 +190,9 @@ pub fn get_registry_hash() -> Option<String> {
 /// Sets the finalized registry content hash.
 pub fn set_registry_hash(hash: String) {
     *REGISTRY_HASH.lock().unwrap() = Some(hash);
+}
+
+/// Clears the stored registry content hash (used when no custom content exists).
+pub fn clear_registry_hash() {
+    *REGISTRY_HASH.lock().unwrap() = None;
 }

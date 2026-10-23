@@ -1,7 +1,9 @@
 use redox_mc_abi::types::{NETWORK_TARGET_BROADCAST, NETWORK_TARGET_PLAYER, NETWORK_TARGET_SERVER};
 use redox_mc_api::network::{
-    clear_outbox, dispatch_received, drain_outbox, outbox_len, NetworkChannel, NetworkContext,
+    clear_outbox, current_side, dispatch_received, drain_outbox, drain_outbox_for_side, outbox_len,
+    outbox_len_for_side, set_callback_side, set_running_side, NetworkChannel, NetworkContext,
     NetworkError, NetworkMessage, NetworkSide, PlayerId, SenderId, MAX_MESSAGE_SIZE,
+    MAX_SERVERBOUND_MESSAGE_SIZE,
 };
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -213,6 +215,14 @@ fn sender_helpers_distinguish_server_from_player() {
     assert_eq!(server.name(), "server");
     assert_eq!(server.player_id(), None);
 
+    // A player literally named "server" must not be mistaken for the server.
+    let player_named_server = SenderId::new("server", "");
+    assert!(!player_named_server.is_server());
+    assert_eq!(
+        player_named_server.player_id(),
+        Some(PlayerId::new("server", ""))
+    );
+
     let player = SenderId::new("Alex", "uuid");
     assert!(!player.is_server());
     assert_eq!(player.player_id(), Some(PlayerId::new("Alex", "uuid")));
@@ -223,9 +233,21 @@ fn sender_helpers_distinguish_server_from_player() {
 }
 
 #[test]
+fn current_side_prefers_the_callback_scope() {
+    set_running_side(NetworkSide::Server);
+    set_callback_side(Some(NetworkSide::Client));
+    assert_eq!(current_side(), NetworkSide::Client);
+
+    set_callback_side(None);
+    assert_eq!(current_side(), NetworkSide::Server);
+}
+
+#[test]
 fn outbound_messages_are_routed_by_destination() {
     let _guard = outbox_guard();
     clear_outbox();
+    set_running_side(NetworkSide::Server);
+    set_callback_side(None);
 
     let channel = NetworkChannel::<Ping>::register("testmod:outbound").unwrap();
     let ping = Ping {
@@ -238,6 +260,8 @@ fn outbound_messages_are_routed_by_destination() {
     channel.send_to_player(&player, &ping).unwrap();
     channel.send_to_server(&ping).unwrap();
     assert_eq!(outbox_len(), 3);
+    assert_eq!(outbox_len_for_side(NetworkSide::Server), 2);
+    assert_eq!(outbox_len_for_side(NetworkSide::Client), 1);
 
     let mut seen = Vec::new();
     drain_outbox(|channel, target_kind, target_name, target_uuid, data| {
@@ -267,6 +291,8 @@ fn outbound_messages_are_routed_by_destination() {
 fn undeliverable_messages_do_not_block_the_queue() {
     let _guard = outbox_guard();
     clear_outbox();
+    set_running_side(NetworkSide::Server);
+    set_callback_side(None);
 
     let channel = NetworkChannel::<u32>::register("testmod:drain").unwrap();
     channel.send(&1).unwrap();
@@ -286,6 +312,8 @@ fn undeliverable_messages_do_not_block_the_queue() {
 fn oversized_messages_are_rejected() {
     let _guard = outbox_guard();
     clear_outbox();
+    set_running_side(NetworkSide::Server);
+    set_callback_side(None);
 
     let channel = NetworkChannel::<Vec<u8>>::register("testmod:large").unwrap();
     let oversized = vec![0u8; MAX_MESSAGE_SIZE + 1];
@@ -296,6 +324,63 @@ fn oversized_messages_are_rejected() {
         }
         other => panic!("expected MessageTooLarge, got {other:?}"),
     }
+    assert_eq!(outbox_len(), 0);
+}
+
+#[test]
+fn oversized_serverbound_messages_are_rejected() {
+    let _guard = outbox_guard();
+    clear_outbox();
+
+    let channel = NetworkChannel::<Vec<u8>>::register("testmod:large-client").unwrap();
+    let oversized = vec![0u8; MAX_SERVERBOUND_MESSAGE_SIZE + 1];
+    match channel.send_to_server(&oversized) {
+        Err(NetworkError::MessageTooLarge { size, max }) => {
+            assert_eq!(size, MAX_SERVERBOUND_MESSAGE_SIZE + 1);
+            assert_eq!(max, MAX_SERVERBOUND_MESSAGE_SIZE);
+        }
+        other => panic!("expected MessageTooLarge, got {other:?}"),
+    }
+
+    // The same payload is legal in the clientbound direction.
+    let player = PlayerId::new("TestPlayer", "uuid-1");
+    channel.send_to_player(&player, &oversized).unwrap();
+    assert_eq!(outbox_len_for_side(NetworkSide::Server), 1);
+    clear_outbox();
+}
+
+#[test]
+fn drain_outbox_for_side_leaves_the_other_side_queued() {
+    let _guard = outbox_guard();
+    clear_outbox();
+
+    let channel = NetworkChannel::<u32>::register("testmod:side-drain").unwrap();
+    let player = PlayerId::new("TestPlayer", "uuid-1");
+    channel.send_to_player(&player, &1).unwrap();
+    channel.send_to_server(&2).unwrap();
+    channel.send_to_player(&player, &3).unwrap();
+
+    let mut server_seen = Vec::new();
+    drain_outbox_for_side(NetworkSide::Server, |_channel, kind, _name, _uuid, data| {
+        server_seen.push((kind, data.to_vec()));
+        true
+    });
+
+    assert_eq!(server_seen.len(), 2);
+    assert_eq!(server_seen[0].1, 1u32.to_le_bytes().to_vec());
+    assert_eq!(server_seen[1].1, 3u32.to_le_bytes().to_vec());
+    assert_eq!(outbox_len_for_side(NetworkSide::Server), 0);
+    assert_eq!(outbox_len_for_side(NetworkSide::Client), 1);
+
+    let mut client_seen = Vec::new();
+    drain_outbox_for_side(NetworkSide::Client, |_channel, kind, _name, _uuid, data| {
+        client_seen.push((kind, data.to_vec()));
+        true
+    });
+
+    assert_eq!(client_seen.len(), 1);
+    assert_eq!(client_seen[0].0, NETWORK_TARGET_SERVER);
+    assert_eq!(client_seen[0].1, 2u32.to_le_bytes().to_vec());
     assert_eq!(outbox_len(), 0);
 }
 
@@ -334,4 +419,23 @@ fn reply_routes_to_player_on_server_and_server_on_client() {
     assert_eq!(targets[0].3, 99u32.to_le_bytes().to_vec());
     assert_eq!(targets[1].0, NETWORK_TARGET_SERVER);
     assert_eq!(targets[1].3, 100u32.to_le_bytes().to_vec());
+}
+
+#[test]
+fn reply_without_a_player_target_fails_closed() {
+    let _guard = outbox_guard();
+    clear_outbox();
+
+    let channel = NetworkChannel::<u32>::register("testmod:reply-no-target").unwrap();
+    let server_ctx = NetworkContext::new(
+        "testmod:reply-no-target",
+        SenderId::server(),
+        NetworkSide::Server,
+    );
+
+    assert!(matches!(
+        channel.reply(&server_ctx, &1),
+        Err(NetworkError::NoReplyTarget)
+    ));
+    assert_eq!(outbox_len(), 0);
 }

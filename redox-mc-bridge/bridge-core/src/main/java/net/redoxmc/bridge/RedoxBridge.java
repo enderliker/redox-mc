@@ -119,6 +119,14 @@ public final class RedoxBridge {
     public static native String[] getLoadedModVersions();
 
     /**
+     * Returns a consistent handshake snapshot as {@code [hash, id0, version0, ...]}.
+     *
+     * The mod list only contains {@code side = "both"} mods, which are the mods
+     * the remote side must also have installed.
+     */
+    public static native String[] getHandshakeManifest();
+
+    /**
      * Validates client handshake credentials against server requirements.
      *
      * @param clientHash the registry content hash reported by the client

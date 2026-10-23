@@ -213,14 +213,24 @@ pub unsafe fn handle_on_register_content(env: *mut jni::JNIEnv) {
     }
 
     // 5. Compute and store deterministic registry content hash
-    let hash = crate::registry::compute_full_registry_hash(&items, &blocks);
-    crate::registry::set_registry_hash(hash.clone());
-    println!(
-        "[redox-mc-loader] Content registration complete: {} custom item(s), {} custom block(s) registered. Registry Content Hash: {}",
-        items.len(),
-        blocks.len(),
-        hash
-    );
+    let hash = crate::registry::compute_registry_content_hash(&items, &blocks);
+    match &hash {
+        Some(hash) => {
+            crate::registry::set_registry_hash(hash.clone());
+            println!(
+                "[redox-mc-loader] Content registration complete: {} custom item(s), {} custom block(s) registered. Registry Content Hash: {}",
+                items.len(),
+                blocks.len(),
+                hash
+            );
+        }
+        None => {
+            crate::registry::clear_registry_hash();
+            println!(
+                "[redox-mc-loader] Content registration complete: no custom items or blocks registered; registry content hash is unset."
+            );
+        }
+    }
 }
 
 /// Invoked from JNI when `RedoxBridge.onRegistriesFrozen()` is triggered immediately after `BuiltInRegistries.freeze$original()`.

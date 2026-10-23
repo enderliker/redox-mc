@@ -26,11 +26,22 @@ pub fn validate_client_handshake(
         ));
     }
 
-    // 2. Index client mods by mod ID
-    let client_mod_map: HashMap<&str, &str> = client_mods
-        .iter()
-        .map(|m| (m.id.as_str(), m.version.as_str()))
-        .collect();
+    // 2. Index client mods by mod ID, rejecting duplicates and malformed entries
+    let mut client_mod_map: HashMap<&str, &str> = HashMap::with_capacity(client_mods.len());
+    for client_mod in client_mods {
+        if client_mod.id.is_empty() {
+            return Err("Client reported a mod with an empty identifier.".to_string());
+        }
+        if client_mod_map
+            .insert(client_mod.id.as_str(), client_mod.version.as_str())
+            .is_some()
+        {
+            return Err(format!(
+                "Client reported duplicate mod '{}' in its handshake.",
+                client_mod.id
+            ));
+        }
+    }
 
     // 3. Verify all required server mods exist on client with matching versions
     for s_mod in server_mods {

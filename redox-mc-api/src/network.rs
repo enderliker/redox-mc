@@ -38,15 +38,20 @@ use redox_mc_abi::types::{
     FfiSlice, FfiStatus, FfiStr, NetworkOutboundVisitor, NETWORK_SIDE_CLIENT, NETWORK_SIDE_SERVER,
     NETWORK_TARGET_BROADCAST, NETWORK_TARGET_PLAYER, NETWORK_TARGET_SERVER,
 };
+use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::ffi::c_void;
 use std::fmt;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 /// Maximum size of a single encoded mod message (1 MiB, matching clientbound limits).
 pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
+
+/// Maximum size of a serverbound mod message enforced by the vanilla client.
+pub const MAX_SERVERBOUND_MESSAGE_SIZE: usize = 32767;
 
 /// Maximum number of messages that may wait in the outbox at once.
 pub const MAX_OUTBOX_MESSAGES: usize = 1024;
@@ -93,27 +98,73 @@ impl NetworkSide {
     }
 }
 
+// Side on which the current thread last executed a mod callback.
+thread_local! {
+    static CALLBACK_SIDE: Cell<Option<NetworkSide>> = const { Cell::new(None) };
+}
+
+/// Process-wide side used when no callback context has been recorded.
+static RUNNING_SIDE: AtomicU8 = AtomicU8::new(NETWORK_SIDE_SERVER as u8);
+
+/// Returns the side that owns outbound messages queued right now.
+///
+/// A callback-scoped side set by the loader takes precedence over the
+/// process-wide running side. This is what keeps a server-side callback in an
+/// integrated server from being routed through the client transport.
+#[inline]
+pub fn current_side() -> NetworkSide {
+    CALLBACK_SIDE.with(Cell::get).unwrap_or_else(running_side)
+}
+
+/// Returns the process-wide running side (server by default).
+#[inline]
+pub fn running_side() -> NetworkSide {
+    if RUNNING_SIDE.load(Ordering::Acquire) == NETWORK_SIDE_CLIENT as u8 {
+        NetworkSide::Client
+    } else {
+        NetworkSide::Server
+    }
+}
+
+/// Sets the process-wide running side.
+#[inline]
+pub fn set_running_side(side: NetworkSide) {
+    RUNNING_SIDE.store(side.as_abi() as u8, Ordering::Release);
+}
+
+/// Sets (or clears) the side associated with the current callback thread.
+#[inline]
+pub fn set_callback_side(side: Option<NetworkSide>) {
+    CALLBACK_SIDE.with(|current| current.set(side));
+}
+
 /// Identity of the remote party that sent a network message.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SenderId {
     name: String,
     uuid: String,
+    server: bool,
 }
 
 impl SenderId {
-    /// Creates a sender identity from a player name and UUID string.
+    /// Creates a player sender identity from a name and UUID string.
     #[inline]
     pub fn new(name: impl Into<String>, uuid: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             uuid: uuid.into(),
+            server: false,
         }
     }
 
     /// Creates the synthetic identity used by the client for inbound server messages.
     #[inline]
     pub fn server() -> Self {
-        Self::new("server", "")
+        Self {
+            name: "server".to_string(),
+            uuid: String::new(),
+            server: true,
+        }
     }
 
     /// Returns the sender name.
@@ -131,13 +182,13 @@ impl SenderId {
     /// Returns `true` when this identity represents the remote server.
     #[inline]
     pub fn is_server(&self) -> bool {
-        self.name == "server" && self.uuid.is_empty()
+        self.server
     }
 
     /// Converts this identity into a targetable [`PlayerId`], if it represents a player.
     #[inline]
     pub fn player_id(&self) -> Option<PlayerId> {
-        if self.is_server() || (self.name.is_empty() && self.uuid.is_empty()) {
+        if self.server || (self.name.is_empty() && self.uuid.is_empty()) {
             None
         } else {
             Some(PlayerId::new(self.name.clone(), self.uuid.clone()))
@@ -220,9 +271,10 @@ impl NetworkContext {
 
     /// Replies on `channel`, routing automatically to the sender.
     ///
-    /// On the server this targets the originating player (falling back to a
-    /// broadcast for the synthetic server identity). On the client it targets
-    /// the remote server.
+    /// On the server this targets the originating player. On the client it
+    /// targets the remote server. A server callback whose sender is not a
+    /// targetable player returns [`NetworkError::NoReplyTarget`] instead of
+    /// broadcasting to every connected player.
     pub fn reply<T: NetworkMessage>(
         &self,
         channel: &NetworkChannel<T>,
@@ -231,7 +283,7 @@ impl NetworkContext {
         match self.side {
             NetworkSide::Server => match self.player() {
                 Some(player) => channel.send_to_player(&player, message),
-                None => channel.send(message),
+                None => Err(NetworkError::NoReplyTarget),
             },
             NetworkSide::Client => channel.send_to_server(message),
         }
@@ -253,6 +305,8 @@ pub enum NetworkError {
     OutboxFull,
     /// The outbox reached [`MAX_OUTBOX_BYTES`].
     OutboxBytesFull,
+    /// A reply was attempted from a context whose sender is not a player.
+    NoReplyTarget,
 }
 
 impl fmt::Display for NetworkError {
@@ -273,6 +327,10 @@ impl fmt::Display for NetworkError {
             Self::OutboxBytesFull => write!(
                 f,
                 "network outbox is full ({MAX_OUTBOX_BYTES} pending bytes)"
+            ),
+            Self::NoReplyTarget => write!(
+                f,
+                "cannot reply to a sender that is not a targetable player"
             ),
         }
     }
@@ -455,15 +513,16 @@ impl<T: NetworkMessage> NetworkChannel<T> {
 
     /// Queues a message for the other side of the connection.
     ///
-    /// On the server this broadcasts to every connected player; on the client it
-    /// sends to the remote server.
+    /// The message is tagged with the current callback side, falling back to the
+    /// process-wide running side. On the server this broadcasts to every
+    /// connected player; on the client it sends to the remote server.
     pub fn send(&self, message: &T) -> Result<(), NetworkError> {
-        self.enqueue(message, Destination::Broadcast)
+        self.enqueue(message, Destination::Broadcast, current_side())
     }
 
     /// Queues a message addressed to the remote server. Intended for client-side mods.
     pub fn send_to_server(&self, message: &T) -> Result<(), NetworkError> {
-        self.enqueue(message, Destination::Server)
+        self.enqueue(message, Destination::Server, NetworkSide::Client)
     }
 
     /// Queues a message addressed to a specific player. Intended for server-side mods.
@@ -474,6 +533,7 @@ impl<T: NetworkMessage> NetworkChannel<T> {
                 name: player.name.clone(),
                 uuid: player.uuid.clone(),
             },
+            NetworkSide::Server,
         )
     }
 
@@ -484,19 +544,41 @@ impl<T: NetworkMessage> NetworkChannel<T> {
 
     /// Sends raw bytes without invoking [`NetworkMessage::encode`].
     pub fn send_raw(&self, data: &[u8]) -> Result<(), NetworkError> {
-        self.enqueue_encoded(data.to_vec(), Destination::Broadcast)
+        self.enqueue_encoded(data.to_vec(), Destination::Broadcast, current_side())
     }
 
-    fn enqueue(&self, message: &T, destination: Destination) -> Result<(), NetworkError> {
+    fn enqueue(
+        &self,
+        message: &T,
+        destination: Destination,
+        side: NetworkSide,
+    ) -> Result<(), NetworkError> {
         let data = message.encode()?;
-        self.enqueue_encoded(data, destination)
+        self.enqueue_encoded(data, destination, side)
     }
 
-    fn enqueue_encoded(&self, data: Vec<u8>, destination: Destination) -> Result<(), NetworkError> {
-        if data.len() > MAX_MESSAGE_SIZE {
+    fn enqueue_encoded(
+        &self,
+        data: Vec<u8>,
+        destination: Destination,
+        side: NetworkSide,
+    ) -> Result<(), NetworkError> {
+        // The destination fixes the transport for addressed messages, regardless
+        // of which thread happened to call the API.
+        let side = match destination {
+            Destination::Server => NetworkSide::Client,
+            Destination::Player { .. } => NetworkSide::Server,
+            Destination::Broadcast => side,
+        };
+        let max_size = if side == NetworkSide::Client {
+            MAX_SERVERBOUND_MESSAGE_SIZE
+        } else {
+            MAX_MESSAGE_SIZE
+        };
+        if data.len() > max_size {
             return Err(NetworkError::MessageTooLarge {
                 size: data.len(),
-                max: MAX_MESSAGE_SIZE,
+                max: max_size,
             });
         }
 
@@ -512,6 +594,7 @@ impl<T: NetworkMessage> NetworkChannel<T> {
         state.queue.push_back(OutboundMessage {
             channel: self.id.clone(),
             destination,
+            side,
             data,
         });
         Ok(())
@@ -536,6 +619,7 @@ enum Destination {
 struct OutboundMessage {
     channel: String,
     destination: Destination,
+    side: NetworkSide,
     data: Vec<u8>,
 }
 
@@ -560,6 +644,18 @@ pub fn outbox_len() -> usize {
     outbox().lock().unwrap().queue.len()
 }
 
+/// Returns the number of messages queued for a specific side.
+#[inline]
+pub fn outbox_len_for_side(side: NetworkSide) -> usize {
+    outbox()
+        .lock()
+        .unwrap()
+        .queue
+        .iter()
+        .filter(|message| message.side == side)
+        .count()
+}
+
 /// Drops every queued outbound message. Primarily useful in tests and on shutdown.
 pub fn clear_outbox() {
     let mut state = outbox().lock().unwrap();
@@ -567,19 +663,52 @@ pub fn clear_outbox() {
     state.bytes = 0;
 }
 
-/// Drains the outbox, invoking `visitor` once per queued message.
+/// Drains every queued message, regardless of side, invoking `visitor` once per
+/// message. Intended for tests and diagnostics; the loader uses
+/// [`drain_outbox_for_side`].
+pub fn drain_outbox<F>(visitor: F)
+where
+    F: FnMut(&str, u32, &str, &str, &[u8]) -> bool,
+{
+    drain_outbox_inner(None, visitor);
+}
+
+/// Drains only the messages queued for `side`, leaving the other side's queue
+/// untouched.
 ///
 /// The visitor receives `(channel, target_kind, target_name, target_uuid, data)`.
 /// Returning `false` marks the message as undeliverable; it is logged and dropped
 /// so a permanently unavailable target cannot block the rest of the queue.
-pub fn drain_outbox<F>(mut visitor: F)
+pub fn drain_outbox_for_side<F>(side: NetworkSide, visitor: F)
+where
+    F: FnMut(&str, u32, &str, &str, &[u8]) -> bool,
+{
+    drain_outbox_inner(Some(side), visitor);
+}
+
+fn drain_outbox_inner<F>(side: Option<NetworkSide>, mut visitor: F)
 where
     F: FnMut(&str, u32, &str, &str, &[u8]) -> bool,
 {
     let messages = {
         let mut state = outbox().lock().unwrap();
-        state.bytes = 0;
-        std::mem::take(&mut state.queue)
+        if side.is_none() {
+            state.bytes = 0;
+            std::mem::take(&mut state.queue).into_iter().collect()
+        } else {
+            let mut selected = Vec::new();
+            let mut remaining = VecDeque::with_capacity(state.queue.len());
+            while let Some(message) = state.queue.pop_front() {
+                if Some(message.side) == side {
+                    state.bytes -= message.data.len();
+                    selected.push(message);
+                } else {
+                    remaining.push_back(message);
+                }
+            }
+            state.queue = remaining;
+            selected
+        }
     };
 
     for message in messages {
@@ -626,9 +755,16 @@ pub fn dispatch_received(
         }
     };
 
+    let sender = if side == NetworkSide::Client && sender_name == "server" && sender_uuid.is_empty()
+    {
+        SenderId::server()
+    } else {
+        SenderId::new(sender_name, sender_uuid)
+    };
+
     let context = NetworkContext {
         channel: channel.to_string(),
-        sender: SenderId::new(sender_name, sender_uuid),
+        sender,
         side,
     };
 
@@ -711,27 +847,62 @@ pub unsafe fn ffi_dispatch_network_payload(
     result.unwrap_or(FfiStatus::Panic)
 }
 
+/// FFI entry point invoked by the generated `redox_mod_set_running_side` export.
+///
+/// # Safety
+/// The loader must pass a valid `NETWORK_SIDE_*` value.
+pub unsafe fn ffi_set_running_side(side: u32) -> FfiStatus {
+    match NetworkSide::from_abi(side) {
+        Some(side) => {
+            set_running_side(side);
+            FfiStatus::Success
+        }
+        None => FfiStatus::InvalidArgument,
+    }
+}
+
+/// FFI entry point invoked by the generated `redox_mod_set_network_side` export.
+///
+/// # Safety
+/// The loader must pass a valid `NETWORK_SIDE_*` value.
+pub unsafe fn ffi_set_network_side(side: u32) -> FfiStatus {
+    match NetworkSide::from_abi(side) {
+        Some(side) => {
+            set_callback_side(Some(side));
+            FfiStatus::Success
+        }
+        None => FfiStatus::InvalidArgument,
+    }
+}
+
 /// FFI entry point invoked by the generated `redox_mod_drain_network_outbox` export.
 ///
 /// # Safety
 /// `visitor` must be a valid function pointer and `user_data` must remain valid
 /// for the duration of this call.
 pub unsafe fn ffi_drain_network_outbox(
+    side: u32,
     visitor: NetworkOutboundVisitor,
     user_data: *mut c_void,
 ) -> FfiStatus {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        drain_outbox(|channel, target_kind, target_name, target_uuid, data| {
-            let status = visitor(
-                user_data,
-                FfiStr::from_str(channel),
-                target_kind,
-                FfiStr::from_str(target_name),
-                FfiStr::from_str(target_uuid),
-                FfiSlice::from_slice(data),
-            );
-            status.is_success()
-        });
+        let Some(side) = NetworkSide::from_abi(side) else {
+            return FfiStatus::InvalidArgument;
+        };
+        drain_outbox_for_side(
+            side,
+            |channel, target_kind, target_name, target_uuid, data| {
+                let status = visitor(
+                    user_data,
+                    FfiStr::from_str(channel),
+                    target_kind,
+                    FfiStr::from_str(target_name),
+                    FfiStr::from_str(target_uuid),
+                    FfiSlice::from_slice(data),
+                );
+                status.is_success()
+            },
+        );
         FfiStatus::Success
     }));
 
@@ -772,17 +943,37 @@ macro_rules! export_network_handlers {
             )
         }
 
-        /// Drains this mod's outbound network queue.
+        /// Drains this mod's outbound network queue for one side.
         ///
         /// # Safety
         /// `visitor` must be a valid function pointer and `user_data` must remain
         /// valid for the duration of the call.
         #[no_mangle]
         pub unsafe extern "C" fn redox_mod_drain_network_outbox(
+            side: u32,
             visitor: $crate::abi::types::NetworkOutboundVisitor,
             user_data: *mut ::core::ffi::c_void,
         ) -> $crate::types::FfiStatus {
-            $crate::network::ffi_drain_network_outbox(visitor, user_data)
+            $crate::network::ffi_drain_network_outbox(side, visitor, user_data)
+        }
+
+        /// Sets the process-wide side used for outbound messages queued outside
+        /// of a callback.
+        ///
+        /// # Safety
+        /// `side` must be one of the `NETWORK_SIDE_*` constants.
+        #[no_mangle]
+        pub unsafe extern "C" fn redox_mod_set_running_side(side: u32) -> $crate::types::FfiStatus {
+            $crate::network::ffi_set_running_side(side)
+        }
+
+        /// Sets the side associated with the current callback thread.
+        ///
+        /// # Safety
+        /// `side` must be one of the `NETWORK_SIDE_*` constants.
+        #[no_mangle]
+        pub unsafe extern "C" fn redox_mod_set_network_side(side: u32) -> $crate::types::FfiStatus {
+            $crate::network::ffi_set_network_side(side)
         }
     };
 }

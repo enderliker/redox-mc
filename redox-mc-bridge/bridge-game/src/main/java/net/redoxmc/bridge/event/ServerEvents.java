@@ -4,6 +4,7 @@ import net.minecraft.network.protocol.game.ServerboundChatPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.redoxmc.bridge.RedoxBridge;
+import net.redoxmc.bridge.network.ModNetworkBridge;
 
 /**
  * Server gameplay lifecycle and packet event bridge.
@@ -34,6 +35,7 @@ public final class ServerEvents {
         if (server != null) {
             serverInstance = server;
         }
+        ModNetworkBridge.sweepHandshakeTasks();
         long tickCount = (server != null) ? (long) server.getTickCount() : 0L;
         RedoxBridge.onServerTick(tickCount);
     }

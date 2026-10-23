@@ -61,6 +61,10 @@ pub struct LoadedMod {
     pub dispatch_network_payload_fn: Option<redox_mc_abi::types::NetworkDispatchFn>,
     /// Drains the mod's queued outbound network messages.
     pub drain_network_outbox_fn: Option<redox_mc_abi::types::NetworkOutboxDrainFn>,
+    /// Sets the process-wide side used outside callbacks.
+    pub set_running_side_fn: Option<unsafe extern "C" fn(u32) -> redox_mc_abi::types::FfiStatus>,
+    /// Sets the side associated with the current callback thread.
+    pub set_network_side_fn: Option<unsafe extern "C" fn(u32) -> redox_mc_abi::types::FfiStatus>,
 }
 
 pub struct ModManager {
@@ -369,6 +373,22 @@ impl ModManager {
                     .ok()
                     .map(|s| *s)
             };
+            let set_running_side_fn = unsafe {
+                boxed_lib
+                    .get::<unsafe extern "C" fn(u32) -> redox_mc_abi::types::FfiStatus>(
+                        b"redox_mod_set_running_side\0",
+                    )
+                    .ok()
+                    .map(|s| *s)
+            };
+            let set_network_side_fn = unsafe {
+                boxed_lib
+                    .get::<unsafe extern "C" fn(u32) -> redox_mc_abi::types::FfiStatus>(
+                        b"redox_mod_set_network_side\0",
+                    )
+                    .ok()
+                    .map(|s| *s)
+            };
 
             self.loaded_mods.push(LoadedMod {
                 manifest,
@@ -386,6 +406,8 @@ impl ModManager {
                 on_block_destroy_fn,
                 dispatch_network_payload_fn,
                 drain_network_outbox_fn,
+                set_running_side_fn,
+                set_network_side_fn,
             });
         }
 
@@ -758,6 +780,67 @@ pub fn running_side() -> ModSide {
     RUNNING_SIDE.get().copied().unwrap_or(ModSide::Server)
 }
 
+/// Notifies every loaded mod which side owns outbound messages queued by the
+/// next callback on this thread.
+pub fn notify_network_side(side: ModSide) {
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        match guard.as_ref() {
+            Some(manager) => manager
+                .loaded_mods
+                .iter()
+                .filter_map(|loaded| {
+                    loaded
+                        .set_network_side_fn
+                        .map(|cb| (loaded.manifest.id.clone(), cb))
+                })
+                .collect(),
+            None => Vec::new(),
+        }
+    };
+
+    let abi_side = crate::network::side_to_abi(side);
+    for (id, callback) in callbacks {
+        let status = unsafe { callback(abi_side) };
+        if let Err(safety_err) = crate::safety::check_ffi_status(&id, status) {
+            eprintln!(
+                "[redox-mc-loader] ERROR: Mod '{}' failed to set network side: {}",
+                id, safety_err
+            );
+        }
+    }
+}
+
+/// Notifies every loaded mod of the process-wide running side.
+pub fn notify_running_side(side: ModSide) {
+    let callbacks: Vec<_> = {
+        let guard = MOD_MANAGER.lock().unwrap();
+        match guard.as_ref() {
+            Some(manager) => manager
+                .loaded_mods
+                .iter()
+                .filter_map(|loaded| {
+                    loaded
+                        .set_running_side_fn
+                        .map(|cb| (loaded.manifest.id.clone(), cb))
+                })
+                .collect(),
+            None => Vec::new(),
+        }
+    };
+
+    let abi_side = crate::network::side_to_abi(side);
+    for (id, callback) in callbacks {
+        let status = unsafe { callback(abi_side) };
+        if let Err(safety_err) = crate::safety::check_ffi_status(&id, status) {
+            eprintln!(
+                "[redox-mc-loader] ERROR: Mod '{}' failed to set running side: {}",
+                id, safety_err
+            );
+        }
+    }
+}
+
 /// Dispatches an inbound mod channel payload to loader-local handlers and to
 /// every loaded mod in deterministic order.
 ///
@@ -771,6 +854,7 @@ pub unsafe fn dispatch_network_payload(
     sender_uuid: &str,
     side: ModSide,
 ) {
+    notify_network_side(side);
     crate::network::dispatch_local_handlers(channel, data);
 
     let callbacks: Vec<(String, redox_mc_abi::types::NetworkDispatchFn)> = {
@@ -894,6 +978,9 @@ pub fn on_bootstrap_entry(running_side: ModSide) {
         }
     }
 
+    // Mods are loaded; publish the process-wide side before any callback runs.
+    notify_running_side(running_side);
+
     // Call dispatch outside the mutex lock to prevent deadlock if mod invokes loader API
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -963,6 +1050,8 @@ pub fn on_register_content() {
 
 /// Called from RedoxBridge.onServerTick(long tickCount)
 pub fn on_server_tick(tick_count: i64) {
+    notify_network_side(ModSide::Server);
+
     // Snapshot callbacks outside the mutex to prevent deadlocks and lock contention during ticks
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -991,6 +1080,7 @@ pub fn on_server_tick(tick_count: i64) {
 /// Called from RedoxBridge.onServerChat(String playerName, String message)
 /// Returns true if allowed, false if cancelled by any loaded mod.
 pub fn on_server_chat(player_name: &str, message: &str) -> bool {
+    notify_network_side(ModSide::Server);
     // Snapshot callbacks outside the mutex to prevent deadlocks and lock contention during chat
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -1030,6 +1120,7 @@ pub fn on_server_chat(player_name: &str, message: &str) -> bool {
 /// Dispatches item use to loaded mods.
 /// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
 pub fn on_item_use(item_id: &str, hand: i32) -> i32 {
+    notify_network_side(ModSide::Server);
     let ffi_id = redox_mc_abi::types::FfiStr::from_str(item_id);
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -1056,6 +1147,7 @@ pub fn on_item_use(item_id: &str, hand: i32) -> i32 {
 /// Dispatches item useOn to loaded mods.
 /// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
 pub fn on_item_use_on(item_id: &str, x: i32, y: i32, z: i32, face: i32, hand: i32) -> i32 {
+    notify_network_side(ModSide::Server);
     let ffi_id = redox_mc_abi::types::FfiStr::from_str(item_id);
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -1081,6 +1173,7 @@ pub fn on_item_use_on(item_id: &str, x: i32, y: i32, z: i32, face: i32, hand: i3
 
 /// Dispatches item finish using to loaded mods.
 pub fn on_item_finish_using(item_id: &str) {
+    notify_network_side(ModSide::Server);
     let ffi_id = redox_mc_abi::types::FfiStr::from_str(item_id);
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -1106,6 +1199,7 @@ pub fn on_item_finish_using(item_id: &str) {
 /// Dispatches block useWithoutItem to loaded mods.
 /// Returns 0 for PASS, 1 for SUCCESS, 2 for CONSUME, 3 for FAIL.
 pub fn on_block_use_without_item(block_id: &str, x: i32, y: i32, z: i32, direction: i32) -> i32 {
+    notify_network_side(ModSide::Server);
     let ffi_id = redox_mc_abi::types::FfiStr::from_str(block_id);
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -1134,6 +1228,7 @@ pub fn on_block_use_without_item(block_id: &str, x: i32, y: i32, z: i32, directi
 
 /// Dispatches block stepOn to loaded mods.
 pub fn on_block_step_on(block_id: &str, x: i32, y: i32, z: i32) {
+    notify_network_side(ModSide::Server);
     let ffi_id = redox_mc_abi::types::FfiStr::from_str(block_id);
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -1155,6 +1250,7 @@ pub fn on_block_step_on(block_id: &str, x: i32, y: i32, z: i32) {
 
 /// Dispatches block destroy to loaded mods.
 pub fn on_block_destroy(block_id: &str, x: i32, y: i32, z: i32) {
+    notify_network_side(ModSide::Server);
     let ffi_id = redox_mc_abi::types::FfiStr::from_str(block_id);
     let callbacks: Vec<_> = {
         let guard = MOD_MANAGER.lock().unwrap();
@@ -1181,6 +1277,24 @@ pub fn get_loaded_mods_info() -> Vec<(String, String)> {
         manager
             .loaded_mods
             .iter()
+            .map(|m| (m.manifest.id.clone(), m.manifest.version.to_string()))
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Returns the mods that the remote side must also have installed.
+///
+/// Only `side = "both"` mods participate in the handshake. Server-only mods are
+/// not required on clients, and client-only mods are not required on servers.
+pub fn get_handshake_mods_info() -> Vec<(String, String)> {
+    let guard = MOD_MANAGER.lock().unwrap();
+    if let Some(manager) = guard.as_ref() {
+        manager
+            .loaded_mods
+            .iter()
+            .filter(|m| m.manifest.side == ModSide::Both)
             .map(|m| (m.manifest.id.clone(), m.manifest.version.to_string()))
             .collect()
     } else {

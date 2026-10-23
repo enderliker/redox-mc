@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.PacketUtils;
@@ -55,8 +56,8 @@ public final class ModNetworkBridge {
             Field field = ServerCommonPacketListenerImpl.class.getDeclaredField("server");
             field.setAccessible(true);
             return field;
-        } catch (Throwable t) {
-            System.err.println("[redox-mc-bridge] Could not access ServerCommonPacketListenerImpl.server: " + t.getMessage());
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Could not access ServerCommonPacketListenerImpl.server: " + e.getMessage());
             return null;
         }
     }
@@ -73,18 +74,30 @@ public final class ModNetworkBridge {
      * Enqueues ModHandshakeConfigurationTask into the listener's configurationTasks queue.
      */
     public static void onStartConfiguration(final ServerConfigurationPacketListenerImpl listener) {
+        if (listener == null) {
+            return;
+        }
         try {
             Field field = ServerConfigurationPacketListenerImpl.class.getDeclaredField("configurationTasks");
             field.setAccessible(true);
             @SuppressWarnings("unchecked")
             Queue<ConfigurationTask> tasks = (Queue<ConfigurationTask>) field.get(listener);
-            if (tasks != null) {
-                ModHandshakeConfigurationTask task = new ModHandshakeConfigurationTask(listener);
-                tasks.add(task);
-                System.out.println("[redox-mc-bridge] Enqueued ModHandshakeConfigurationTask in CONFIGURATION phase.");
+            if (tasks == null) {
+                throw new IllegalStateException("configurationTasks queue is null");
             }
-        } catch (Throwable t) {
-            System.err.println("[redox-mc-bridge] Failed to enqueue ModHandshakeConfigurationTask: " + t.getMessage());
+            ModHandshakeConfigurationTask task = new ModHandshakeConfigurationTask(listener);
+            tasks.add(task);
+            System.out.println("[redox-mc-bridge] Enqueued ModHandshakeConfigurationTask in CONFIGURATION phase.");
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Failed to enqueue ModHandshakeConfigurationTask: " + e.getMessage());
+            try {
+                listener.disconnect(Component.literal(
+                    "Redox-MC could not initialize the mod handshake on this server: " + e.getMessage()
+                ));
+            } catch (Exception | LinkageError disconnectError) {
+                System.err.println("[redox-mc-bridge] Failed to disconnect client after handshake setup error: "
+                    + disconnectError.getMessage());
+            }
         }
     }
 
@@ -92,11 +105,33 @@ public final class ModNetworkBridge {
         final ServerConfigurationPacketListenerImpl listener,
         final ModHandshakeConfigurationTask task
     ) {
-        activeHandshakeTasks.put(listener, task);
+        if (listener != null) {
+            activeHandshakeTasks.put(listener, task);
+        }
     }
 
     public static void unregisterActiveHandshakeTask(final ServerConfigurationPacketListenerImpl listener) {
-        activeHandshakeTasks.remove(listener);
+        if (listener != null) {
+            activeHandshakeTasks.remove(listener);
+        }
+    }
+
+    /**
+     * Drops handshake tasks whose connection is gone or whose task already
+     * finished without unregistering itself.
+     */
+    public static void sweepHandshakeTasks() {
+        try {
+            for (Map.Entry<ServerConfigurationPacketListenerImpl, ModHandshakeConfigurationTask> entry
+                    : activeHandshakeTasks.entrySet()) {
+                ModHandshakeConfigurationTask task = entry.getValue();
+                if (task == null || task.isFinished() || !entry.getKey().isAcceptingMessages()) {
+                    activeHandshakeTasks.remove(entry.getKey(), task);
+                }
+            }
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Failed to sweep stale handshake tasks: " + e.getMessage());
+        }
     }
 
     /**
@@ -165,8 +200,8 @@ public final class ModNetworkBridge {
             );
         } catch (RunningOnDifferentThreadException runningOnDifferentThread) {
             throw runningOnDifferentThread;
-        } catch (Throwable t) {
-            System.err.println("[redox-mc-bridge] Error dispatching inbound mod payload: " + t.getMessage());
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Error dispatching inbound mod payload: " + e.getMessage());
         }
     }
 
@@ -176,9 +211,19 @@ public final class ModNetworkBridge {
      * Vanilla already rescheduled the packet onto the client thread before this
      * method is invoked, so the native dispatch and outbox flush run on the
      * correct thread.
+     *
+     * @param listener the client packet listener that received the payload
+     *                 (declared as {@code Object} because bridge-game is compiled
+     *                 against the server jar, where client classes are absent)
+     * @param payload the clientbound custom payload
      */
-    public static void onClientCustomPayload(final CustomPacketPayload payload) {
+    public static void onClientCustomPayload(final Object listener, final CustomPacketPayload payload) {
         if (!(payload instanceof ModRawPayload modPayload)) {
+            return;
+        }
+
+        if (ModHandshakeConfigurationTask.HANDSHAKE_REQUEST_CHANNEL.equals(modPayload.id())) {
+            respondToHandshakeRequest(listener);
             return;
         }
 
@@ -190,8 +235,54 @@ public final class ModNetworkBridge {
                 "",
                 RedoxBridge.NETWORK_SIDE_CLIENT
             );
-        } catch (Throwable t) {
-            System.err.println("[redox-mc-bridge] Error dispatching clientbound mod payload: " + t.getMessage());
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Error dispatching clientbound mod payload: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Builds the local handshake manifest and answers the server request
+     * directly through the configuration listener.
+     *
+     * <p>This deliberately does not go through the mod outbox: the client
+     * connection is in CONFIGURATION phase, where {@code Minecraft.getConnection()}
+     * is still null and the outbox drain cannot find a transport.</p>
+     */
+    private static void respondToHandshakeRequest(final Object listener) {
+        if (listener == null) {
+            System.err.println("[redox-mc-bridge] Cannot answer mod handshake request without a client listener.");
+            return;
+        }
+
+        final ModHandshakePayload local;
+        try {
+            local = ModHandshakePayload.local();
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Could not build the client mod handshake manifest: " + e.getMessage());
+            return;
+        }
+
+        byte[] data;
+        try {
+            data = local.encode();
+        } catch (RuntimeException e) {
+            System.err.println("[redox-mc-bridge] Could not encode the client mod handshake response: " + e.getMessage());
+            return;
+        }
+        if (data.length > MAX_SERVERBOUND_PAYLOAD_SIZE) {
+            System.err.println("[redox-mc-bridge] Client handshake response exceeds 32767 bytes (" + data.length + ").");
+            return;
+        }
+
+        try {
+            Method send = listener.getClass().getMethod("send", Packet.class);
+            send.invoke(listener, new ServerboundCustomPayloadPacket(
+                new ModRawPayload(ModHandshakeConfigurationTask.HANDSHAKE_RESPONSE_CHANNEL, data)
+            ));
+            System.out.println("[redox-mc-bridge] Sent mod handshake response to server (hash="
+                + local.registryHash() + ", mods=" + local.modCount() + ").");
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Failed to send mod handshake response: " + e.getMessage());
         }
     }
 
@@ -201,8 +292,8 @@ public final class ModNetworkBridge {
     public static void onClientTick() {
         try {
             RedoxBridge.onClientTick();
-        } catch (Throwable t) {
-            System.err.println("[redox-mc-bridge] Error flushing mod network outbox on client tick: " + t.getMessage());
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Error flushing mod network outbox on client tick: " + e.getMessage());
         }
     }
 
@@ -244,8 +335,8 @@ public final class ModNetworkBridge {
                 return false;
             }
             identifier = Identifier.fromNamespaceAndPath(channel.substring(0, separator), channel.substring(separator + 1));
-        } catch (Throwable t) {
-            System.err.println("[redox-mc-bridge] Invalid outbound mod channel '" + channel + "': " + t.getMessage());
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Invalid outbound mod channel '" + channel + "': " + e.getMessage());
             return false;
         }
 
@@ -344,8 +435,8 @@ public final class ModNetworkBridge {
             }
             clientSend.invoke(connection, new ServerboundCustomPayloadPacket(new ModRawPayload(identifier, data)));
             return true;
-        } catch (Throwable t) {
-            System.err.println("[redox-mc-bridge] Failed to send serverbound mod payload: " + t.getMessage());
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Failed to send serverbound mod payload: " + e.getMessage());
             return false;
         }
     }
@@ -361,8 +452,8 @@ public final class ModNetworkBridge {
             clientGetConnection = minecraftClass.getMethod("getConnection");
             clientSend = listenerClass.getMethod("send", Packet.class);
             return true;
-        } catch (Throwable t) {
-            System.err.println("[redox-mc-bridge] Client network bridge unavailable: " + t.getMessage());
+        } catch (Exception | LinkageError e) {
+            System.err.println("[redox-mc-bridge] Client network bridge unavailable: " + e.getMessage());
             return false;
         }
     }
@@ -420,6 +511,12 @@ public final class ModNetworkBridge {
             @Override
             public void encode(final B output, final CustomPacketPayload value) {
                 if (value instanceof ModRawPayload modPayload) {
+                    if (modPayload.data().length > ModRawPayload.MAX_PAYLOAD_SIZE) {
+                        throw new IllegalArgumentException(
+                            "Mod payload for channel '" + modPayload.id() + "' exceeds limit ("
+                                + modPayload.data().length + " > " + ModRawPayload.MAX_PAYLOAD_SIZE + ")"
+                        );
+                    }
                     output.writeIdentifier(modPayload.id());
                     output.writeBytes(modPayload.data());
                 } else {

@@ -107,6 +107,101 @@ fn test_handshake_validation_version_mismatch() {
 }
 
 #[test]
+fn test_handshake_validation_accepts_empty_server_and_client() {
+    // A server with no custom content and no side=both mods must not require
+    // any client mods. The empty hash is the canonical "no content" marker.
+    let result = validate_client_handshake("", &[], "", &[]);
+    assert!(
+        result.is_ok(),
+        "An empty server handshake must accept an empty client"
+    );
+}
+
+#[test]
+fn test_handshake_validation_rejects_empty_client_hash_for_content_server() {
+    let server_mods = vec![HandshakeModInfo {
+        id: "testmod".to_string(),
+        version: "0.1.0".to_string(),
+    }];
+    let client_mods = vec![HandshakeModInfo {
+        id: "testmod".to_string(),
+        version: "0.1.0".to_string(),
+    }];
+
+    let result = validate_client_handshake("abc123hash", &server_mods, "", &client_mods);
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .contains("Mismatched registry content hash"));
+}
+
+#[test]
+fn test_handshake_validation_rejects_duplicate_client_mods() {
+    let server_mods = vec![HandshakeModInfo {
+        id: "testmod".to_string(),
+        version: "0.1.0".to_string(),
+    }];
+    let client_mods = vec![
+        HandshakeModInfo {
+            id: "testmod".to_string(),
+            version: "0.1.0".to_string(),
+        },
+        HandshakeModInfo {
+            id: "testmod".to_string(),
+            version: "0.1.0".to_string(),
+        },
+    ];
+
+    let result = validate_client_handshake("hash1", &server_mods, "hash1", &client_mods);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("duplicate mod 'testmod'"));
+}
+
+#[test]
+fn test_handshake_validation_rejects_empty_client_mod_id() {
+    let client_mods = vec![HandshakeModInfo {
+        id: String::new(),
+        version: "0.1.0".to_string(),
+    }];
+
+    let result = validate_client_handshake("", &[], "", &client_mods);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("empty identifier"));
+}
+
+#[test]
+fn test_handshake_validation_allows_extra_client_mods() {
+    let server_mods = vec![HandshakeModInfo {
+        id: "testmod".to_string(),
+        version: "0.1.0".to_string(),
+    }];
+    let client_mods = vec![
+        HandshakeModInfo {
+            id: "testmod".to_string(),
+            version: "0.1.0".to_string(),
+        },
+        HandshakeModInfo {
+            id: "client_only".to_string(),
+            version: "2.0.0".to_string(),
+        },
+    ];
+
+    let result = validate_client_handshake("hash1", &server_mods, "hash1", &client_mods);
+    assert!(
+        result.is_ok(),
+        "Client-only mods must not be rejected by the server"
+    );
+}
+
+#[test]
+fn test_empty_registry_has_no_content_hash() {
+    assert_eq!(
+        redox_mc_loader::registry::compute_registry_content_hash(&[], &[]),
+        None
+    );
+}
+
+#[test]
 fn test_server_configuration_packet_listener_impl_wrapper_transformation() {
     let jar_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../versions/26.3/server-26.3.jar");
     if !jar_path.exists() {

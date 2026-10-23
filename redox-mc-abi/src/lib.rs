@@ -29,7 +29,10 @@ pub use types::{
 pub use vtable::{LoaderContext, LoaderVTable, ModInitFn, ModVTable};
 
 /// Canonical ABI version of this release.
-pub const REDOX_ABI_VERSION: AbiVersion = AbiVersion::new(1, 0, 0);
+///
+/// The network outbox drain signature changed in 2.0.0 (side parameter), which
+/// is a hard break for mods built against the 1.x ABI.
+pub const REDOX_ABI_VERSION: AbiVersion = AbiVersion::new(2, 0, 0);
 
 /// Convenience prelude module.
 pub mod prelude {

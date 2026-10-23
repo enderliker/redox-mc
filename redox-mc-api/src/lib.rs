@@ -24,8 +24,10 @@ pub use item::{
     FLAG_HAS_FINISH_USING, FLAG_HAS_USE, FLAG_HAS_USE_ON,
 };
 pub use network::{
-    clear_outbox, dispatch_received, drain_outbox, outbox_len, NetworkChannel, NetworkContext,
-    NetworkError, NetworkMessage, NetworkSide, PlayerId, SenderId,
+    clear_outbox, current_side, dispatch_received, drain_outbox, drain_outbox_for_side, outbox_len,
+    outbox_len_for_side, running_side, set_callback_side, set_running_side, NetworkChannel,
+    NetworkContext, NetworkError, NetworkMessage, NetworkSide, PlayerId, SenderId,
+    MAX_MESSAGE_SIZE, MAX_SERVERBOUND_MESSAGE_SIZE,
 };
 pub use redox_mc_abi as abi;
 pub use redox_mc_abi::types;

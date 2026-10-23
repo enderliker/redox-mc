@@ -52,6 +52,7 @@ javac -cp "${CORE_JAR_NATIVE}${CP_SEP}${MC_SERVER_JAR_NATIVE}${LIB_CP}" -d "${BU
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackResources.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackRepositorySource.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModRawPayload.java" \
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModHandshakePayload.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModNetworkBridge.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModHandshakeConfigurationTask.java"
 
@@ -72,6 +73,7 @@ javac -cp "${CORE_JAR_NATIVE}" -d "${BUILD_DIR}/test-classes" \
 javac -cp "${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}${CP_SEP}${MC_SERVER_JAR_NATIVE}${LIB_CP}" -d "${BUILD_DIR}/test-classes" \
     "${SCRIPT_DIR}/src/test/java/net/redoxmc/test/CustomPayloadTest.java" \
     "${SCRIPT_DIR}/src/test/java/net/redoxmc/test/ModHandshakeTest.java" \
+    "${SCRIPT_DIR}/src/test/java/net/redoxmc/test/ClientHandshakeTest.java" \
     "${SCRIPT_DIR}/src/test/java/net/redoxmc/test/NetworkChannelTest.java"
 javac -d "${BUILD_DIR}/test-game-classes" \
     "${SCRIPT_DIR}/src/test/java/net/minecraft/server/TestBundledMain.java"

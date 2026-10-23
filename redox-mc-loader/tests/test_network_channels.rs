@@ -7,6 +7,7 @@
 use redox_mc_adapter_26_3::{CLIENT_HOOK_TARGETS, HOOK_TARGETS};
 use redox_mc_loader::all_hook_targets;
 use redox_mc_loader::transformer::transform_class;
+use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::ClassFile;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -172,6 +173,131 @@ fn combined_hook_table_contains_server_and_client_network_hooks() {
             expected.1
         );
     }
+}
+
+#[test]
+fn client_hooks_forward_the_listener_to_the_bridge() {
+    let expected_desc =
+        "(Ljava/lang/Object;Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload;)V";
+    let mut hooks = 0;
+    for hook in CLIENT_HOOK_TARGETS
+        .iter()
+        .filter(|hook| hook.bridge_method == "onClientCustomPayload")
+    {
+        hooks += 1;
+        assert_eq!(
+            hook.bridge_desc, expected_desc,
+            "{}::{} must forward the listener as Object",
+            hook.class_name, hook.method_name
+        );
+    }
+    assert_eq!(
+        hooks, 2,
+        "both the play-phase and configuration-phase client hooks must be present"
+    );
+}
+
+fn wrapper_code<'a>(
+    class_file: &'a ClassFile<'_>,
+    method_name: &str,
+    descriptor: &str,
+) -> &'a [Instruction] {
+    let method = class_file
+        .methods
+        .iter()
+        .find(|method| {
+            let name = class_file
+                .constant_pool
+                .try_get_utf8(method.name_index)
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            let desc = class_file
+                .constant_pool
+                .try_get_utf8(method.descriptor_index)
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            name == method_name && desc == descriptor
+        })
+        .unwrap_or_else(|| panic!("wrapper {method_name}{descriptor} must exist"));
+
+    method
+        .attributes
+        .iter()
+        .find_map(|attribute| match attribute {
+            Attribute::Code { code, .. } => Some(code.as_slice()),
+            _ => None,
+        })
+        .expect("wrapper method must have a Code attribute")
+}
+
+#[test]
+fn client_payload_wrapper_passes_this_and_payload_to_the_bridge() {
+    let Some(jar_path) = client_jar() else {
+        println!("SKIPPED: Minecraft client jar not found.");
+        return;
+    };
+
+    let entry = "net/minecraft/client/multiplayer/ClientPacketListener.class";
+    let class_name = "net/minecraft/client/multiplayer/ClientPacketListener";
+    let descriptor = "(Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload;)V";
+    let original = extract_class(&jar_path, entry)
+        .unwrap_or_else(|| panic!("failed to extract {entry} from {jar_path:?}"));
+    let transformed = transform_class(&original, CLIENT_HOOK_TARGETS)
+        .unwrap_or_else(|err| panic!("transformation of {class_name} failed: {err}"))
+        .unwrap_or_else(|| panic!("{class_name} must match a client hook"));
+    let class_file = ClassFile::from_bytes(&transformed).expect("valid transformed classfile");
+
+    let code = wrapper_code(&class_file, "handleCustomPayload", descriptor);
+    assert!(
+        matches!(code.first(), Some(Instruction::Aload_0)),
+        "wrapper must load `this` as the first argument, got {:?}",
+        code.first()
+    );
+    assert!(
+        matches!(code.get(1), Some(Instruction::Aload_1)),
+        "wrapper must load the payload as the second argument, got {:?}",
+        code.get(1)
+    );
+
+    let call_index = code
+        .iter()
+        .find_map(|instruction| match instruction {
+            Instruction::Invokestatic(index) => Some(*index),
+            _ => None,
+        })
+        .expect("wrapper must invoke the bridge statically");
+
+    let (class_index, name_and_type_index) = class_file
+        .constant_pool
+        .try_get_method_ref(call_index)
+        .expect("bridge call must reference a method");
+    let bridge_class = class_file
+        .constant_pool
+        .try_get_class(*class_index)
+        .expect("bridge class reference must resolve")
+        .to_string();
+    assert_eq!(bridge_class, "net/redoxmc/bridge/network/ModNetworkBridge");
+
+    let (name_index, desc_index) = class_file
+        .constant_pool
+        .try_get_name_and_type(*name_and_type_index)
+        .expect("bridge method name and type must resolve");
+    let bridge_method = class_file
+        .constant_pool
+        .try_get_utf8(*name_index)
+        .expect("bridge method name must resolve")
+        .to_string();
+    let bridge_desc = class_file
+        .constant_pool
+        .try_get_utf8(*desc_index)
+        .expect("bridge method descriptor must resolve")
+        .to_string();
+    assert_eq!(bridge_method, "onClientCustomPayload");
+    assert_eq!(
+        bridge_desc,
+        "(Ljava/lang/Object;Lnet/minecraft/network/protocol/common/custom/CustomPacketPayload;)V",
+        "the client wrapper must pass the listener so the bridge can answer the handshake"
+    );
 }
 
 #[test]

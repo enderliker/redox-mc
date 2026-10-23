@@ -33,11 +33,16 @@ public record ModRawPayload(Identifier id, byte[] data) implements CustomPacketP
     public static <B extends FriendlyByteBuf> StreamCodec<B, ModRawPayload> codec(final Identifier id, final int maxPayloadSize) {
         return CustomPacketPayload.codec(
             (payload, buf) -> {
+                if (payload.data().length > maxPayloadSize) {
+                    throw new IllegalArgumentException(
+                        "Payload size " + payload.data().length + " exceeds maximum allowed: " + maxPayloadSize
+                    );
+                }
                 buf.writeBytes(payload.data());
             },
             buf -> {
                 int length = buf.readableBytes();
-                if (length >= 0 && length <= maxPayloadSize) {
+                if (length <= maxPayloadSize) {
                     byte[] bytes = new byte[length];
                     buf.readBytes(bytes);
                     return new ModRawPayload(id, bytes);

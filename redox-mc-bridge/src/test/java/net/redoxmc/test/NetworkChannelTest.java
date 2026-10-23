@@ -44,6 +44,10 @@ public class NetworkChannelTest {
         if (pingTarget != RedoxBridge.NETWORK_TARGET_BROADCAST) {
             throw new AssertionError("FAIL: Ping target should be BROADCAST, got " + pingTarget);
         }
+        int pingSide = (Integer) ping[5];
+        if (pingSide != RedoxBridge.NETWORK_SIDE_SERVER) {
+            throw new AssertionError("FAIL: Ping origin side should be SERVER, got " + pingSide);
+        }
         long nonce = readNonce((byte[]) ping[4]);
         if (nonce != 1234L) {
             throw new AssertionError("FAIL: Expected ping nonce 1234, got " + nonce);
@@ -69,6 +73,10 @@ public class NetworkChannelTest {
         int ackTarget = (Integer) ack[1];
         if (ackTarget != RedoxBridge.NETWORK_TARGET_PLAYER) {
             throw new AssertionError("FAIL: Ack target should be PLAYER, got " + ackTarget);
+        }
+        int ackSide = (Integer) ack[5];
+        if (ackSide != RedoxBridge.NETWORK_SIDE_SERVER) {
+            throw new AssertionError("FAIL: Ack origin side should be SERVER, got " + ackSide);
         }
         if (!PLAYER_NAME.equals(ack[2])) {
             throw new AssertionError("FAIL: Ack target name should be '" + PLAYER_NAME + "', got '" + ack[2] + "'");
@@ -105,6 +113,10 @@ public class NetworkChannelTest {
         int pongTarget = (Integer) pong[1];
         if (pongTarget != RedoxBridge.NETWORK_TARGET_SERVER) {
             throw new AssertionError("FAIL: Pong target should be SERVER, got " + pongTarget);
+        }
+        int pongSide = (Integer) pong[5];
+        if (pongSide != RedoxBridge.NETWORK_SIDE_CLIENT) {
+            throw new AssertionError("FAIL: Pong origin side should be CLIENT, got " + pongSide);
         }
         AckPayload pongPayload = parseAck((byte[]) pong[4]);
         if (pongPayload.nonce != clientNonce) {

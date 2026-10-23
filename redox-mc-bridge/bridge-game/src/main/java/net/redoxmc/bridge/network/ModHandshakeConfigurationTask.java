@@ -1,8 +1,6 @@
 package net.redoxmc.bridge.network;
 
-import io.netty.buffer.Unpooled;
 import java.util.function.Consumer;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
@@ -24,7 +22,7 @@ public class ModHandshakeConfigurationTask implements ConfigurationTask {
     public static final Identifier HANDSHAKE_RESPONSE_CHANNEL = Identifier.fromNamespaceAndPath("redox", "handshake_response");
 
     private final ServerConfigurationPacketListenerImpl listener;
-    private boolean finished = false;
+    private volatile boolean finished = false;
     private int ticksWaiting = 0;
     private static final int TIMEOUT_TICKS = 20 * 15; // 15 seconds
 
@@ -34,35 +32,42 @@ public class ModHandshakeConfigurationTask implements ConfigurationTask {
 
     @Override
     public void start(final Consumer<Packet<?>> connection) {
-        String serverHash = RedoxBridge.getRegistryHash();
-        String[] modIds = RedoxBridge.getLoadedModIds();
-        String[] modVersions = RedoxBridge.getLoadedModVersions();
+        if (this.finished) {
+            return;
+        }
 
-        // If server has no custom registry content and no mods, handshake completes immediately
-        if ((serverHash == null || serverHash.isEmpty()) && (modIds == null || modIds.length == 0)) {
+        final ModHandshakePayload local;
+        try {
+            local = ModHandshakePayload.local();
+        } catch (Exception | LinkageError e) {
+            failClosed("Could not build the server mod handshake manifest: " + e.getMessage());
+            return;
+        }
+
+        // If the server has no custom registry content and no side=both mods,
+        // vanilla clients can join without the Redox-MC agent.
+        if (local.registryHash().isEmpty() && local.modCount() == 0) {
             System.out.println("[redox-mc-bridge] No custom mods or registry content on server; skipping handshake.");
             this.finished = true;
             return;
         }
 
-        // Register as active handshake task for this listener
         ModNetworkBridge.registerActiveHandshakeTask(this.listener, this);
 
-        // Serialize handshake request
-        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
-        buf.writeUtf(serverHash != null ? serverHash : "");
-        int modCount = modIds != null ? modIds.length : 0;
-        buf.writeVarInt(modCount);
-        for (int i = 0; i < modCount; i++) {
-            buf.writeUtf(modIds[i]);
-            buf.writeUtf(modVersions[i]);
+        try {
+            byte[] payloadBytes = local.encode();
+            if (payloadBytes.length > ModRawPayload.MAX_PAYLOAD_SIZE) {
+                failClosed("Server mod handshake request exceeds the 1 MiB clientbound limit.");
+                return;
+            }
+            System.out.println(
+                "[redox-mc-bridge] Sending mod handshake request to client (hash="
+                    + local.registryHash() + ", mods=" + local.modCount() + ")..."
+            );
+            connection.accept(new ClientboundCustomPayloadPacket(new ModRawPayload(HANDSHAKE_REQUEST_CHANNEL, payloadBytes)));
+        } catch (Exception | LinkageError e) {
+            failClosed("Could not send the mod handshake request: " + e.getMessage());
         }
-
-        byte[] payloadBytes = new byte[buf.readableBytes()];
-        buf.readBytes(payloadBytes);
-
-        System.out.println("[redox-mc-bridge] Sending mod handshake request to client (hash=" + serverHash + ", mods=" + modCount + ")...");
-        connection.accept(new ClientboundCustomPayloadPacket(new ModRawPayload(HANDSHAKE_REQUEST_CHANNEL, payloadBytes)));
     }
 
     @Override
@@ -74,40 +79,38 @@ public class ModHandshakeConfigurationTask implements ConfigurationTask {
         this.ticksWaiting++;
         if (this.ticksWaiting > TIMEOUT_TICKS) {
             System.err.println("[redox-mc-bridge] Mod handshake timed out waiting for client response.");
-            this.listener.disconnect(
-                Component.literal("Mod handshake timed out waiting for client response. Ensure Redox-MC is installed on the client.")
-            );
-            return false;
+            failClosed("Mod handshake timed out waiting for client response. Ensure Redox-MC is installed on the client.");
+            return true;
         }
 
         return false;
     }
 
     public void handleClientResponse(final byte[] data) {
-        try {
-            FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.wrappedBuffer(data));
-            String clientHash = buf.readUtf();
-            int modCount = buf.readVarInt();
-            String[] clientModIds = new String[modCount];
-            String[] clientModVersions = new String[modCount];
-            for (int i = 0; i < modCount; i++) {
-                clientModIds[i] = buf.readUtf();
-                clientModVersions[i] = buf.readUtf();
-            }
+        if (this.finished) {
+            return;
+        }
 
-            // Validate against server in Rust via JNI
-            String errorReason = RedoxBridge.validateClientHandshake(clientHash, clientModIds, clientModVersions);
+        try {
+            ModHandshakePayload response = ModHandshakePayload.decode(data);
+
+            // Validate against the server-side snapshot in Rust via JNI.
+            String errorReason = RedoxBridge.validateClientHandshake(
+                response.registryHash(),
+                response.modIds(),
+                response.modVersions()
+            );
             if (errorReason != null && !errorReason.isEmpty()) {
                 System.err.println("[redox-mc-bridge] Disconnecting client due to handshake error: " + errorReason);
-                this.listener.disconnect(Component.literal(errorReason));
+                failClosed(errorReason);
                 return;
             }
 
             System.out.println("[redox-mc-bridge] Client handshake validation successful! Advancing to PLAY phase.");
             this.finished = true;
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
             System.err.println("[redox-mc-bridge] Error parsing client handshake response: " + e.getMessage());
-            this.listener.disconnect(Component.literal("Corrupted or invalid mod handshake response from client."));
+            failClosed("Corrupted or invalid mod handshake response from client.");
         } finally {
             ModNetworkBridge.unregisterActiveHandshakeTask(this.listener);
         }
@@ -115,6 +118,21 @@ public class ModHandshakeConfigurationTask implements ConfigurationTask {
 
     public boolean isFinished() {
         return this.finished;
+    }
+
+    private void failClosed(final String reason) {
+        this.finished = true;
+        ModNetworkBridge.unregisterActiveHandshakeTask(this.listener);
+        if (this.listener != null) {
+            try {
+                this.listener.disconnect(Component.literal(reason));
+            } catch (Exception | LinkageError e) {
+                System.err.println("[redox-mc-bridge] Failed to disconnect client after handshake failure: "
+                    + e.getMessage());
+            }
+        } else {
+            System.err.println("[redox-mc-bridge] Handshake failed: " + reason);
+        }
     }
 
     @Override

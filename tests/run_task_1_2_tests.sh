@@ -168,13 +168,37 @@ java -agentpath:"${AGENT_PATH_NATIVE}" \
     net.redoxmc.test.CustomPayloadTest
 
 echo ""
-echo "=== Running Test 8: Task 6.2 ModHandshakeConfigurationTask & Registry Hash Verification ==="
+echo "=== Running Test 8: Task 6.2 ModHandshakeConfigurationTask & Registry Hash Verification (no mods) ==="
+NO_MOD_HANDSHAKE_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_handshake_none')
+cd "${NO_MOD_HANDSHAKE_DIR}"
+java -agentpath:"${AGENT_PATH_NATIVE}" \
+    -cp "${TEST_CLASSES_NATIVE}${CP_SEP}${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}${CP_SEP}${SERVER_JAR_NATIVE}${LIB_CP}" \
+    net.redoxmc.test.ModHandshakeTest
+cd "${ROOT_DIR}"
+rm -rf "${NO_MOD_HANDSHAKE_DIR}" 2>/dev/null || true
+
+echo ""
+echo "=== Running Test 9: Task 6.2 Handshake Request/Response (with test mod) ==="
+HANDSHAKE_TEST_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_handshake')
+mkdir -p "${HANDSHAKE_TEST_DIR}/mods/test_mod"
+cp "${ROOT_DIR}/examples/test-mod/mod.toml" "${HANDSHAKE_TEST_DIR}/mods/test_mod/"
+cp "${MOD_LIB}" "${HANDSHAKE_TEST_DIR}/mods/test_mod/"
+
+cd "${HANDSHAKE_TEST_DIR}"
 java -agentpath:"${AGENT_PATH_NATIVE}" \
     -cp "${TEST_CLASSES_NATIVE}${CP_SEP}${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}${CP_SEP}${SERVER_JAR_NATIVE}${LIB_CP}" \
     net.redoxmc.test.ModHandshakeTest
 
 echo ""
-echo "=== Running Test 9: Task 6.3 Typed Network Channels (Ping/Pong with Sender Identity) ==="
+echo "=== Running Test 10: Task 6.2 Client-Side Handshake Response ==="
+java -agentpath:"${AGENT_PATH_NATIVE}" \
+    -cp "${TEST_CLASSES_NATIVE}${CP_SEP}${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}${CP_SEP}${SERVER_JAR_NATIVE}${LIB_CP}" \
+    net.redoxmc.test.ClientHandshakeTest
+cd "${ROOT_DIR}"
+rm -rf "${HANDSHAKE_TEST_DIR}" 2>/dev/null || true
+
+echo ""
+echo "=== Running Test 11: Task 6.3 Typed Network Channels (Ping/Pong with Sender Identity) ==="
 NETWORK_TEST_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'redox_network')
 mkdir -p "${NETWORK_TEST_DIR}/mods/test_mod"
 cp "${ROOT_DIR}/examples/test-mod/mod.toml" "${NETWORK_TEST_DIR}/mods/test_mod/"

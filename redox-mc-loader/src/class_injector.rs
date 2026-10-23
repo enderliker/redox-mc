@@ -260,7 +260,20 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         mod_raw_payload_name
     );
 
-    // 11. Mod network bridge inner StreamCodec: ModNetworkBridge$1
+    // 11. Mod handshake payload: ModHandshakePayload
+    let mod_handshake_payload_name = "net/redoxmc/bridge/network/ModHandshakePayload";
+    define_class(
+        env,
+        mod_handshake_payload_name,
+        loader,
+        MOD_HANDSHAKE_PAYLOAD_BYTES,
+    )?;
+    println!(
+        "[redox-mc-loader] Defined mod handshake payload class: {}",
+        mod_handshake_payload_name
+    );
+
+    // 12. Mod network bridge inner StreamCodec: ModNetworkBridge$1
     let network_bridge_inner_name = "net/redoxmc/bridge/network/ModNetworkBridge$1";
     define_class(
         env,
@@ -273,7 +286,7 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         network_bridge_inner_name
     );
 
-    // 12. Mod network bridge: ModNetworkBridge
+    // 13. Mod network bridge: ModNetworkBridge
     let network_bridge_name = "net/redoxmc/bridge/network/ModNetworkBridge";
     let network_bridge_class =
         define_class(env, network_bridge_name, loader, MOD_NETWORK_BRIDGE_BYTES)?;
@@ -296,7 +309,7 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         network_bridge_name
     );
 
-    // 13. Mod handshake configuration task: ModHandshakeConfigurationTask
+    // 14. Mod handshake configuration task: ModHandshakeConfigurationTask
     let handshake_task_name = "net/redoxmc/bridge/network/ModHandshakeConfigurationTask";
     define_class(
         env,
@@ -352,6 +365,11 @@ pub const VIRTUAL_MOD_PACK_REPOSITORY_SOURCE_INNER_BYTES: &[u8] = include_bytes!
 pub const MOD_RAW_PAYLOAD_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/network/ModRawPayload.class"
+));
+
+pub const MOD_HANDSHAKE_PAYLOAD_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/network/ModHandshakePayload.class"
 ));
 
 pub const MOD_NETWORK_BRIDGE_BYTES: &[u8] = include_bytes!(concat!(

@@ -608,12 +608,12 @@
 **Description:** Crear el binario `cargo-redox-mc` para automatizar el ciclo de desarrollo: `cargo redox-mc new <mod>`, `cargo redox-mc build` y `cargo redox-mc run` (con soporte para lanzar servidor headless rápido o cliente con el agente inyectado).
 
 **Acceptance criteria:**
-- [ ] Genera proyectos de mods con estructura estándar, `mod.toml` y configuración `cdylib`.
-- [ ] `cargo redox-mc run --server` lanza el entorno de pruebas local en un solo comando.
+- [x] Genera proyectos de mods con estructura estándar, `mod.toml` y configuración `cdylib`.
+- [x] `cargo redox-mc run --server` lanza el entorno de pruebas local en un solo comando.
 
 **Verification:**
-- [ ] Build succeeds: `cargo install --path cargo-redox-mc`
-- [ ] Manual check: Crear y arrancar un mod nuevo utilizando exclusivamente `cargo-redox-mc`.
+- [x] Build succeeds: `cargo install --path cargo-redox-mc`
+- [x] Manual check: Crear y arrancar un mod nuevo utilizando exclusivamente `cargo-redox-mc` (automatizado en `tests/test_cargo_redox_mc.py`: `cargo redox-mc new` → `build` → `run --server`, edición de fuente, rebuild y `/redox reload` en vivo).
 
 **Dependencies:** Task 7.1
 

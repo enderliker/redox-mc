@@ -9,6 +9,7 @@ case "$(uname -s)" in
         MOD_LIB_BASENAME="test_mod.dll"
         RELOAD_V1_BASENAME="reload_mod_v1.dll"
         RELOAD_V2_BASENAME="reload_mod_v2.dll"
+        CARGO_REDOX_MC_BIN_BASENAME="cargo-redox-mc.exe"
         CP_SEP=";"
         ;;
     Darwin*)
@@ -16,6 +17,7 @@ case "$(uname -s)" in
         MOD_LIB_BASENAME="libtest_mod.dylib"
         RELOAD_V1_BASENAME="libreload_mod_v1.dylib"
         RELOAD_V2_BASENAME="libreload_mod_v2.dylib"
+        CARGO_REDOX_MC_BIN_BASENAME="cargo-redox-mc"
         CP_SEP=":"
         ;;
     *)
@@ -23,6 +25,7 @@ case "$(uname -s)" in
         MOD_LIB_BASENAME="libtest_mod.so"
         RELOAD_V1_BASENAME="libreload_mod_v1.so"
         RELOAD_V2_BASENAME="libreload_mod_v2.so"
+        CARGO_REDOX_MC_BIN_BASENAME="cargo-redox-mc"
         CP_SEP=":"
         ;;
 esac
@@ -57,9 +60,11 @@ echo "=== Building redox-mc-bridge and compiling agent ==="
 cargo build -p redox-mc-loader
 cargo build -p test-mod
 cargo build -p redox-reload-fixture-v1 -p redox-reload-fixture-v2
+cargo build -p cargo-redox-mc
 
 AGENT_LIB=$(find_library "${AGENT_LIB_BASENAME}")
 MOD_LIB=$(find_library "${MOD_LIB_BASENAME}")
+CARGO_REDOX_MC_BIN=$(find_library "${CARGO_REDOX_MC_BIN_BASENAME}")
 
 if [ ! -f "${AGENT_LIB}" ]; then
     echo "ERROR: Agent shared library not found at ${AGENT_LIB}"
@@ -228,6 +233,13 @@ AGENT_LIB="${AGENT_PATH_NATIVE}" \
     RELOAD_MOD_V2_LIB="${RELOAD_V2_LIB}" \
     BUNDLER_JAR="${BUNDLER_PATH_NATIVE}" \
     "${PYTHON_CMD}" "${ROOT_DIR}/tests/test_hot_reload.py"
+
+echo ""
+echo "=== Running Test 13: Task 7.2 cargo-redox-mc CLI (new/build/run --server + hot reload) ==="
+CARGO_REDOX_MC_BIN="${CARGO_REDOX_MC_BIN}" \
+    AGENT_LIB="${AGENT_PATH_NATIVE}" \
+    BUNDLER_JAR="${BUNDLER_PATH_NATIVE}" \
+    "${PYTHON_CMD}" "${ROOT_DIR}/tests/test_cargo_redox_mc.py"
 
 echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"

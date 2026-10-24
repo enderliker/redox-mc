@@ -1,0 +1,20 @@
+[package]
+name = "cargo-redox-mc"
+version = "0.1.0"
+edition = "2021"
+description = "Development CLI for Redox-MC native mods: scaffold, build and run a headless test server"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "cargo_redox_mc"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cargo-redox-mc"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+toml = "1.1"

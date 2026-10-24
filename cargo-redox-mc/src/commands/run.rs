@@ -91,8 +91,26 @@ pub fn execute(args: RunArgs) -> Result<(), CliError> {
         write_server_config(&run_dir, args.port)?;
     }
 
+    if target == LaunchTarget::Server && !project.targets_server() {
+        eprintln!(
+            "[redox-mc] Warning: Mod '{}' specifies side = \"{}\", but launching a dedicated server.",
+            project.mod_id,
+            project.side.as_deref().unwrap_or("client")
+        );
+    } else if target == LaunchTarget::Client && !project.targets_client() {
+        eprintln!(
+            "[redox-mc] Warning: Mod '{}' specifies side = \"{}\", but launching a game client.",
+            project.mod_id,
+            project.side.as_deref().unwrap_or("server")
+        );
+    }
+
     let staged = project.root.join(".redox-mc/dist").join(&project.mod_id);
-    if staged.is_dir() {
+    let should_stage = match target {
+        LaunchTarget::Server => project.targets_server(),
+        LaunchTarget::Client => project.targets_client(),
+    };
+    if staged.is_dir() && should_stage {
         copy_dir(&staged, &run_dir.join("mods").join(&project.mod_id))?;
     }
 
@@ -160,6 +178,7 @@ fn write_server_config(run_dir: &Path, port: Option<u16>) -> Result<(), CliError
 fn default_server_properties(port: u16) -> String {
     format!(
         "online-mode=false\n\
+         server-ip=127.0.0.1\n\
          server-port={port}\n\
          sync-chunk-writes=false\n\
          level-type=minecraft:flat\n\

@@ -312,6 +312,36 @@ impl ModManager {
             }
         }
 
+        // Initialize running side and bootstrap on the new generation BEFORE
+        // publishing it to the dispatcher. This ensures concurrent server tick
+        // and packet threads never observe an uninitialized generation in
+        // dispatcher::snapshot().
+        let abi_side = crate::network::side_to_abi(running_side);
+        for loaded in &new_mods {
+            if let Some(set_side) = loaded.set_running_side_fn {
+                let status = unsafe { set_side(abi_side) };
+                if let Err(safety_err) =
+                    crate::safety::check_ffi_status(&loaded.manifest.id, status)
+                {
+                    eprintln!(
+                        "[redox-mc-loader] ERROR: Mod '{}' failed to set running side on reload: {}",
+                        loaded.manifest.id, safety_err
+                    );
+                }
+            }
+            if let Some(on_bootstrap) = loaded.on_bootstrap_fn {
+                let status = unsafe { on_bootstrap() };
+                if let Err(safety_err) =
+                    crate::safety::check_ffi_status(&loaded.manifest.id, status)
+                {
+                    eprintln!(
+                        "[redox-mc-loader] ERROR: Mod '{}' on_bootstrap failed on reload: {}",
+                        loaded.manifest.id, safety_err
+                    );
+                }
+            }
+        }
+
         let old_mods = std::mem::replace(&mut self.loaded_mods, new_mods);
         let retired: Vec<String> = old_mods
             .iter()
@@ -1051,7 +1081,7 @@ pub fn get_or_init_manager() -> &'static Mutex<Option<ModManager>> {
 
 /// Collects all registered item definitions from loaded mods in deterministic order.
 pub fn collect_registered_items() -> Vec<crate::registry::RegisteredItemEntry> {
-    let guard = MOD_MANAGER.lock().unwrap();
+    let guard = MOD_MANAGER.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(manager) = guard.as_ref() {
         manager.collect_registered_items()
     } else {
@@ -1061,7 +1091,7 @@ pub fn collect_registered_items() -> Vec<crate::registry::RegisteredItemEntry> {
 
 /// Collects all registered block definitions from loaded mods in deterministic order.
 pub fn collect_registered_blocks() -> Vec<crate::registry::RegisteredBlockEntry> {
-    let guard = MOD_MANAGER.lock().unwrap();
+    let guard = MOD_MANAGER.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(manager) = guard.as_ref() {
         manager.collect_registered_blocks()
     } else {
@@ -1071,7 +1101,7 @@ pub fn collect_registered_blocks() -> Vec<crate::registry::RegisteredBlockEntry>
 
 /// Collects and registers all virtual resources from loaded mods in deterministic order.
 pub fn collect_registered_resources() {
-    let guard = MOD_MANAGER.lock().unwrap();
+    let guard = MOD_MANAGER.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(manager) = guard.as_ref() {
         manager.collect_registered_resources();
     }
@@ -1088,7 +1118,7 @@ pub fn on_bootstrap_entry(running_side: ModSide) {
     );
 
     {
-        let mut guard = MOD_MANAGER.lock().unwrap();
+        let mut guard = MOD_MANAGER.lock().unwrap_or_else(|p| p.into_inner());
         let manager = guard.get_or_insert_with(ModManager::new);
 
         if !manager.initialized {

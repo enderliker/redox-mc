@@ -7,7 +7,7 @@
 use cargo_redox_mc::cli::{normalize_args, Cli, Command, SideArg};
 use cargo_redox_mc::commands::run::{build_launch_command, LaunchCommand, LaunchTarget};
 use cargo_redox_mc::project::ModProject;
-use cargo_redox_mc::repo::{find_artifact, RedoxRepo};
+use cargo_redox_mc::repo::{find_artifact, find_artifact_for_profile, RedoxRepo};
 use cargo_redox_mc::templates::{derive_mod_id, scaffold, ScaffoldOptions};
 use clap::Parser;
 use std::ffi::{OsStr, OsString};
@@ -308,4 +308,82 @@ fn side_argument_maps_to_manifest_strings() {
     assert_eq!(SideArg::Both.as_str(), "both");
     assert_eq!(SideArg::Server.as_str(), "server");
     assert_eq!(SideArg::Client.as_str(), "client");
+}
+
+#[test]
+fn mod_project_side_filtering() {
+    let project_with_side = |side: Option<&str>| ModProject {
+        root: PathBuf::from("/tmp"),
+        cargo_manifest_path: PathBuf::from("/tmp/Cargo.toml"),
+        package_name: "test".to_string(),
+        lib_name: "test".to_string(),
+        mod_id: "test".to_string(),
+        mod_name: None,
+        side: side.map(str::to_string),
+    };
+
+    let both = project_with_side(Some("both"));
+    assert!(both.targets_server());
+    assert!(both.targets_client());
+
+    let server_only = project_with_side(Some("server"));
+    assert!(server_only.targets_server());
+    assert!(!server_only.targets_client());
+
+    let client_only = project_with_side(Some("client"));
+    assert!(!client_only.targets_server());
+    assert!(client_only.targets_client());
+
+    let unspecified = project_with_side(None);
+    assert!(unspecified.targets_server());
+    assert!(unspecified.targets_client());
+}
+
+#[test]
+fn scaffold_escapes_special_characters_in_author() {
+    let dir = unique_dir("scaffold_author");
+    let options = ScaffoldOptions {
+        id: "demo_author".to_string(),
+        display_name: "Demo Author".to_string(),
+        side: "both",
+        author: "Dev \"The Coder\"\nLine2".to_string(),
+        api_path: PathBuf::from("/opt/redox-mc/redox-mc-api"),
+    };
+
+    scaffold(&dir, &options).expect("scaffold must succeed");
+    let mod_toml = fs::read_to_string(dir.join("mod.toml")).expect("mod.toml exists");
+    assert!(mod_toml.contains(r#"authors = ["Dev \"The Coder\" Line2"]"#));
+    let parsed: toml::Value =
+        toml::from_str(&mod_toml).expect("escaped mod.toml must parse cleanly");
+    assert_eq!(
+        parsed["authors"].as_array().unwrap()[0].as_str().unwrap(),
+        "Dev \"The Coder\" Line2"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn find_artifact_honours_preferred_profile() {
+    let target = unique_dir("target_profile");
+    let debug = target.join("debug");
+    let release = target.join("release");
+    fs::create_dir_all(&debug).unwrap();
+    fs::create_dir_all(&release).unwrap();
+
+    let debug_artifact = debug.join("libdemo.so");
+    let release_artifact = release.join("libdemo.so");
+    fs::write(&debug_artifact, b"debug").unwrap();
+    fs::write(&release_artifact, b"release").unwrap();
+
+    assert_eq!(
+        find_artifact_for_profile(&target, "libdemo.so", Some("release")),
+        Some(release_artifact)
+    );
+    assert_eq!(
+        find_artifact_for_profile(&target, "libdemo.so", Some("debug")),
+        Some(debug_artifact)
+    );
+
+    let _ = fs::remove_dir_all(&target);
 }

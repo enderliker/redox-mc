@@ -30,6 +30,8 @@ struct ModManifestLite {
     id: String,
     #[serde(default)]
     name: Option<String>,
+    #[serde(default)]
+    side: Option<String>,
 }
 
 /// A mod project rooted at a directory containing both `Cargo.toml` and `mod.toml`.
@@ -41,9 +43,25 @@ pub struct ModProject {
     pub lib_name: String,
     pub mod_id: String,
     pub mod_name: Option<String>,
+    pub side: Option<String>,
 }
 
 impl ModProject {
+    /// Returns true if the mod can run on dedicated servers (side is "both" or "server").
+    pub fn targets_server(&self) -> bool {
+        !self
+            .side
+            .as_deref()
+            .is_some_and(|s| s.eq_ignore_ascii_case("client"))
+    }
+
+    /// Returns true if the mod can run on game clients (side is "both" or "client").
+    pub fn targets_client(&self) -> bool {
+        !self
+            .side
+            .as_deref()
+            .is_some_and(|s| s.eq_ignore_ascii_case("server"))
+    }
     /// Searches `start` and its ancestors for a mod project.
     pub fn find(start: &Path) -> Result<Self, CliError> {
         let mut dir = if start.is_file() {
@@ -103,6 +121,7 @@ impl ModProject {
             lib_name,
             mod_id: manifest.id,
             mod_name: manifest.name,
+            side: manifest.side,
         })
     }
 

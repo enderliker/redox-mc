@@ -116,14 +116,19 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_reloadMods(
     env: *mut jni::JNIEnv,
     _class: jni::jclass,
 ) -> jni::jstring {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let message = match crate::reload::reload_mods() {
-            Ok(outcome) => outcome.summary(),
-            Err(err) => format!("Redox reload failed: {err}"),
-        };
-        super::strings::string_to_jstring(env, message)
-    }));
-    result.unwrap_or(std::ptr::null_mut())
+    if env.is_null() {
+        return std::ptr::null_mut();
+    }
+    let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+            || match crate::reload::reload_mods() {
+                Ok(outcome) => outcome.summary(),
+                Err(err) => format!("Redox reload failed: {err}"),
+            },
+        ));
+    let message =
+        result.unwrap_or_else(|_| "Redox reload failed: native panic inside loader".to_string());
+    super::strings::string_to_jstring(env, message)
 }
 
 /// JNI native: net.redoxmc.bridge.RedoxBridge.onServerChat(String playerName, String message)

@@ -169,7 +169,22 @@ fn basename(relative: &str) -> &str {
 /// Order: `debug`, `release`, then any cross-compilation triple directory. The
 /// first match wins, so a native build is preferred over a cross build.
 pub fn find_artifact(target_root: &Path, file_name: &str) -> Option<PathBuf> {
-    for profile in ["debug", "release"] {
+    find_artifact_for_profile(target_root, file_name, None)
+}
+
+/// Searches a Cargo target directory for an artifact, preferring the given profile.
+pub fn find_artifact_for_profile(
+    target_root: &Path,
+    file_name: &str,
+    preferred_profile: Option<&str>,
+) -> Option<PathBuf> {
+    let profiles: &[&str] = match preferred_profile {
+        Some("release") => &["release", "debug"],
+        Some("debug") => &["debug", "release"],
+        _ => &["debug", "release"],
+    };
+
+    for profile in profiles {
         let candidate = target_root.join(profile).join(file_name);
         if candidate.is_file() {
             return Some(candidate);
@@ -185,7 +200,7 @@ pub fn find_artifact(target_root: &Path, file_name: &str) -> Option<PathBuf> {
     triples.sort();
 
     for triple in triples {
-        for profile in ["debug", "release"] {
+        for profile in profiles {
             let candidate = triple.join(profile).join(file_name);
             if candidate.is_file() {
                 return Some(candidate);

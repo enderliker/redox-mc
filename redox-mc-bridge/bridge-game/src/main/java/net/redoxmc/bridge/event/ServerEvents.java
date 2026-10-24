@@ -80,6 +80,11 @@ public final class ServerEvents {
             return true;
         }
 
+        if (source != null && source.permissions() != null && !Commands.LEVEL_ADMINS.check(source.permissions())) {
+            source.sendFailure(Component.literal("You do not have permission to execute this command."));
+            return false;
+        }
+
         String result;
         try {
             result = RedoxBridge.reloadMods();
@@ -88,12 +93,16 @@ public final class ServerEvents {
         }
 
         if (result == null || result.isEmpty()) {
-            result = "Redox reload completed.";
+            result = "Redox reload failed: native bridge returned null or empty result.";
         }
 
         final String message = result;
         if (source != null) {
-            source.sendSuccess(() -> Component.literal(message), false);
+            if (message.startsWith("Redox reload failed")) {
+                source.sendFailure(Component.literal(message));
+            } else {
+                source.sendSuccess(() -> Component.literal(message), false);
+            }
         } else {
             System.out.println("[redox-mc-bridge] " + message);
         }

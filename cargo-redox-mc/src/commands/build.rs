@@ -3,7 +3,7 @@
 use crate::cli::BuildArgs;
 use crate::error::CliError;
 use crate::project::{cargo_target_dir, ModProject};
-use crate::repo::find_artifact;
+use crate::repo::find_artifact_for_profile;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -41,8 +41,9 @@ pub fn build_project(project: &ModProject, release: bool) -> Result<PathBuf, Cli
 
     let target_root = cargo_target_dir(&project.root);
     let file_name = project.library_file_name();
-    let built =
-        find_artifact(&target_root, &file_name).ok_or_else(|| CliError::ArtifactNotFound {
+    let preferred_profile = if release { "release" } else { "debug" };
+    let built = find_artifact_for_profile(&target_root, &file_name, Some(preferred_profile))
+        .ok_or_else(|| CliError::ArtifactNotFound {
             root: target_root,
             file_name: file_name.clone(),
         })?;
@@ -54,12 +55,24 @@ pub fn build_project(project: &ModProject, release: bool) -> Result<PathBuf, Cli
         &file_name,
     )?;
 
-    let server_mod_dir = project
-        .root
-        .join(".redox-mc/server/mods")
-        .join(&project.mod_id);
-    if server_mod_dir.is_dir() {
-        stage_into(&server_mod_dir, project, &built, &file_name)?;
+    if project.targets_server() {
+        let server_mod_dir = project
+            .root
+            .join(".redox-mc/server/mods")
+            .join(&project.mod_id);
+        if server_mod_dir.is_dir() {
+            stage_into(&server_mod_dir, project, &built, &file_name)?;
+        }
+    }
+
+    if project.targets_client() {
+        let client_mod_dir = project
+            .root
+            .join(".redox-mc/client/mods")
+            .join(&project.mod_id);
+        if client_mod_dir.is_dir() {
+            stage_into(&client_mod_dir, project, &built, &file_name)?;
+        }
     }
 
     println!(

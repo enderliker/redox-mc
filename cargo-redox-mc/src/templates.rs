@@ -134,6 +134,12 @@ redox-mc-api = {{ path = "{api_path}" }}
 }
 
 fn render_mod_toml(options: &ScaffoldOptions) -> String {
+    let escaped_author = options
+        .author
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\r', "")
+        .replace('\n', " ");
     format!(
         r#"id = "{id}"
 name = "{display_name}"
@@ -147,7 +153,7 @@ license = "MIT"
         id = options.id,
         display_name = options.display_name,
         side = options.side,
-        author = options.author,
+        author = escaped_author,
     )
 }
 

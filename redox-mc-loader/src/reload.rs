@@ -109,15 +109,13 @@ pub fn reload_mods() -> Result<ReloadOutcome, ModLoaderError> {
     let outcome = {
         let mut guard = MOD_MANAGER
             .lock()
-            .map_err(|_| ModLoaderError::LockPoisoned)?;
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let manager = guard.as_mut().ok_or(ModLoaderError::NotInitialized)?;
         manager.reload_mods(&mods_dir, side, &loader_version)?
     };
 
-    // The new generation must learn the running side before any gameplay
-    // callback is dispatched to it.
-    crate::mod_loader::notify_running_side(side);
-    crate::mod_loader::dispatch_bootstrap();
+    // Refresh virtual resources registered by mods (if any were modified or added)
+    crate::mod_loader::collect_registered_resources();
 
     Ok(outcome)
 }

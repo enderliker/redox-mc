@@ -13,7 +13,7 @@ path = "src/bench/main.rs"
 
 [dependencies]
 jvmti-bindings = "3.0.2"
-ristretto_classfile = "0.34.0"
+ristretto_classfile = "0.35.0"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 toml = "1.1"

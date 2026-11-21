@@ -52,6 +52,11 @@ pub const BLOCK_FLAG_HAS_STEP_ON: u32 = 1 << 1;
 /// Block behavior flag: custom destroy interaction (`destroy`).
 pub const BLOCK_FLAG_HAS_DESTROY: u32 = 1 << 2;
 
+/// Block entity behavior flag: custom tick dispatch (`tick`).
+pub const BLOCK_ENTITY_FLAG_HAS_TICK: u32 = 1 << 0;
+/// Block entity behavior flag: custom persistent state serialization (`saveAdditional`/`loadAdditional`).
+pub const BLOCK_ENTITY_FLAG_HAS_PERSISTENCE: u32 = 1 << 1;
+
 /// Standard status code returned by FFI calls.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -508,4 +513,57 @@ pub enum FfiLogLevel {
     Info = 2,
     Warn = 3,
     Error = 4,
+}
+
+/// Click types when interacting with a container menu slot.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FfiMenuClickType {
+    Pickup = 0,
+    QuickMove = 1,
+    Swap = 2,
+    Clone = 3,
+    Throw = 4,
+    QuickCraft = 5,
+    PickupAll = 6,
+}
+
+/// Action outcome from a container menu slot click interception.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FfiMenuAction {
+    Allow = 0,
+    Deny = 1,
+}
+
+/// Borrowed container menu slot click event data passed across FFI.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FfiMenuClickEvent {
+    pub menu_id: FfiStr,
+    pub container_id: i32,
+    pub slot_index: i32,
+    pub button: i32,
+    pub click_type: FfiMenuClickType,
+    pub player_name: FfiStr,
+}
+
+impl FfiMenuClickEvent {
+    pub const fn new(
+        menu_id: FfiStr,
+        container_id: i32,
+        slot_index: i32,
+        button: i32,
+        click_type: FfiMenuClickType,
+        player_name: FfiStr,
+    ) -> Self {
+        Self {
+            menu_id,
+            container_id,
+            slot_index,
+            button,
+            click_type,
+            player_name,
+        }
+    }
 }

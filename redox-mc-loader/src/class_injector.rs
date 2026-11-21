@@ -213,6 +213,32 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         generic_block_name
     );
 
+    // 7. Generic block entity bridge: GenericRedoxBlockEntity
+    let generic_be_name = "net/redoxmc/bridge/block/GenericRedoxBlockEntity";
+    define_class(
+        env,
+        generic_be_name,
+        loader,
+        GENERIC_REDOX_BLOCK_ENTITY_BYTES,
+    )?;
+    println!(
+        "[redox-mc-loader] Defined generic block entity class: {}",
+        generic_be_name
+    );
+
+    // 8. Generic entity block bridge: GenericRedoxEntityBlock
+    let generic_entity_block_name = "net/redoxmc/bridge/block/GenericRedoxEntityBlock";
+    define_class(
+        env,
+        generic_entity_block_name,
+        loader,
+        GENERIC_REDOX_ENTITY_BLOCK_BYTES,
+    )?;
+    println!(
+        "[redox-mc-loader] Defined generic entity block class: {}",
+        generic_entity_block_name
+    );
+
     // 7. Virtual pack resources: VirtualModPackResources
     let virtual_pack_name = "net/redoxmc/bridge/resource/VirtualModPackResources";
     define_class(
@@ -322,6 +348,22 @@ pub unsafe fn define_game_bridge_classes(env: *mut jni::JNIEnv) -> Result<(), St
         handshake_task_name
     );
 
+    // 15. Generic redox menu: GenericRedoxMenu
+    let menu_name = "net/redoxmc/bridge/gui/GenericRedoxMenu";
+    define_class(env, menu_name, loader, GENERIC_REDOX_MENU_BYTES)?;
+    println!(
+        "[redox-mc-loader] Defined generic redox menu class: {}",
+        menu_name
+    );
+
+    // 16. Generic redox menu helper: GenericRedoxMenuHelper
+    let helper_name = "net/redoxmc/bridge/gui/GenericRedoxMenuHelper";
+    define_class(env, helper_name, loader, GENERIC_REDOX_MENU_HELPER_BYTES)?;
+    println!(
+        "[redox-mc-loader] Defined generic redox menu helper class: {}",
+        helper_name
+    );
+
     GAME_CLASSES_DEFINED.store(true, Ordering::Release);
     println!("[redox-mc-loader] All bridge-game classes defined successfully.");
     Ok(())
@@ -345,6 +387,16 @@ pub const GENERIC_RUST_ITEM_BYTES: &[u8] = include_bytes!(concat!(
 pub const GENERIC_REDOX_BLOCK_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/block/GenericRedoxBlock.class"
+));
+
+pub const GENERIC_REDOX_BLOCK_ENTITY_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/block/GenericRedoxBlockEntity.class"
+));
+
+pub const GENERIC_REDOX_ENTITY_BLOCK_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/block/GenericRedoxEntityBlock.class"
 ));
 
 pub const VIRTUAL_MOD_PACK_RESOURCES_BYTES: &[u8] = include_bytes!(concat!(
@@ -385,6 +437,16 @@ pub const MOD_NETWORK_BRIDGE_INNER_BYTES: &[u8] = include_bytes!(concat!(
 pub const MOD_HANDSHAKE_CONFIGURATION_TASK_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/network/ModHandshakeConfigurationTask.class"
+));
+
+pub const GENERIC_REDOX_MENU_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/gui/GenericRedoxMenu.class"
+));
+
+pub const GENERIC_REDOX_MENU_HELPER_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../redox-mc-bridge/build/game-classes/net/redoxmc/bridge/gui/GenericRedoxMenuHelper.class"
 ));
 
 /// Verifies that a real Minecraft subclass was defined, linked, and can be instantiated

@@ -59,6 +59,24 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
     let m_block_destroy = CString::new("onBlockDestroy").unwrap();
     let sig_block_destroy = CString::new("(Ljava/lang/String;III)V").unwrap();
 
+    let m_be_tick = CString::new("onBlockEntityTick").unwrap();
+    let sig_be_tick = CString::new("(Ljava/lang/String;III)V").unwrap();
+
+    let m_be_save = CString::new("onBlockEntitySave").unwrap();
+    let sig_be_save = CString::new("(Ljava/lang/String;III)Ljava/lang/String;").unwrap();
+
+    let m_be_load = CString::new("onBlockEntityLoad").unwrap();
+    let sig_be_load = CString::new("(Ljava/lang/String;IIILjava/lang/String;)V").unwrap();
+
+    let m_menu_open = CString::new("onMenuOpen").unwrap();
+    let sig_menu_open = CString::new("(Ljava/lang/String;ILjava/lang/String;)V").unwrap();
+
+    let m_menu_slot_click = CString::new("onMenuSlotClick").unwrap();
+    let sig_menu_slot_click = CString::new("(Ljava/lang/String;IIIILjava/lang/String;)I").unwrap();
+
+    let m_menu_close = CString::new("onMenuClose").unwrap();
+    let sig_menu_close = CString::new("(Ljava/lang/String;ILjava/lang/String;)V").unwrap();
+
     let m_get_vresource = CString::new("getVirtualResource").unwrap();
     let sig_get_vresource =
         CString::new("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[B").unwrap();
@@ -164,6 +182,36 @@ pub unsafe fn register_bridge_natives(env: *mut jni::JNIEnv) -> Result<(), Strin
             name: m_block_destroy.as_ptr() as *mut _,
             signature: sig_block_destroy.as_ptr() as *mut _,
             fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onBlockDestroy as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_be_tick.as_ptr() as *mut _,
+            signature: sig_be_tick.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onBlockEntityTick as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_be_save.as_ptr() as *mut _,
+            signature: sig_be_save.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onBlockEntitySave as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_be_load.as_ptr() as *mut _,
+            signature: sig_be_load.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onBlockEntityLoad as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_menu_open.as_ptr() as *mut _,
+            signature: sig_menu_open.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onMenuOpen as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_menu_slot_click.as_ptr() as *mut _,
+            signature: sig_menu_slot_click.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onMenuSlotClick as *mut _,
+        },
+        jni::JNINativeMethod {
+            name: m_menu_close.as_ptr() as *mut _,
+            signature: sig_menu_close.as_ptr() as *mut _,
+            fnPtr: Java_net_redoxmc_bridge_RedoxBridge_onMenuClose as *mut _,
         },
         jni::JNINativeMethod {
             name: m_get_vresource.as_ptr() as *mut _,

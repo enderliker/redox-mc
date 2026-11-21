@@ -67,15 +67,21 @@ fn test_abi_layout_and_alignment_64bit() {
     assert_eq!(offset_of!(LoaderVTable, free_string), 16);
     assert_eq!(offset_of!(LoaderVTable, free_buffer), 24);
 
-    // 10. ModVTable (6 function pointers = 6 * 8 = 48 bytes)
-    assert_eq!(size_of::<ModVTable>(), 48);
+    // 10. ModVTable (12 function pointers = 12 * 8 = 96 bytes)
+    assert_eq!(size_of::<ModVTable>(), 96);
     assert_eq!(align_of::<ModVTable>(), 8);
     assert_eq!(offset_of!(ModVTable, on_bootstrap), 0);
     assert_eq!(offset_of!(ModVTable, on_register_content), 8);
     assert_eq!(offset_of!(ModVTable, on_server_tick), 16);
     assert_eq!(offset_of!(ModVTable, on_server_chat), 24);
-    assert_eq!(offset_of!(ModVTable, free_string), 32);
-    assert_eq!(offset_of!(ModVTable, free_buffer), 40);
+    assert_eq!(offset_of!(ModVTable, on_block_entity_tick), 32);
+    assert_eq!(offset_of!(ModVTable, on_block_entity_save), 40);
+    assert_eq!(offset_of!(ModVTable, on_block_entity_load), 48);
+    assert_eq!(offset_of!(ModVTable, on_menu_open), 56);
+    assert_eq!(offset_of!(ModVTable, on_menu_slot_click), 64);
+    assert_eq!(offset_of!(ModVTable, on_menu_close), 72);
+    assert_eq!(offset_of!(ModVTable, free_string), 80);
+    assert_eq!(offset_of!(ModVTable, free_buffer), 88);
 
     // 11. FfiResult
     assert_eq!(size_of::<FfiResult<u32>>(), 8);
@@ -218,6 +224,12 @@ fn test_mock_loader_and_mod_handshake() {
         on_register_content: None,
         on_server_tick: None,
         on_server_chat: None,
+        on_block_entity_tick: None,
+        on_block_entity_save: None,
+        on_block_entity_load: None,
+        on_menu_open: None,
+        on_menu_slot_click: None,
+        on_menu_close: None,
         free_string: redox_mod_free_string,
         free_buffer: redox_mod_free_buffer,
     };
@@ -260,4 +272,65 @@ fn test_mock_loader_and_mod_handshake() {
         &*LOGGED_MESSAGES.lock().unwrap(),
         &["TestMod v1.0 initialized!"]
     );
+}
+
+#[test]
+fn test_block_entity_abi_layout_and_flags() {
+    use redox_mc_abi::types::{BLOCK_ENTITY_FLAG_HAS_PERSISTENCE, BLOCK_ENTITY_FLAG_HAS_TICK};
+    use redox_mc_abi::vtable::ModVTable;
+
+    assert_eq!(BLOCK_ENTITY_FLAG_HAS_TICK, 1 << 0);
+    assert_eq!(BLOCK_ENTITY_FLAG_HAS_PERSISTENCE, 1 << 1);
+
+    // Verify ModVTable alignment and function pointer presence
+    assert!(std::mem::size_of::<ModVTable>() >= 48);
+}
+
+#[test]
+#[cfg(target_pointer_width = "64")]
+fn test_menu_abi_layout_and_alignment() {
+    // 1. FfiMenuClickType
+    assert_eq!(size_of::<FfiMenuClickType>(), 4);
+    assert_eq!(align_of::<FfiMenuClickType>(), 4);
+    assert_eq!(FfiMenuClickType::Pickup as i32, 0);
+    assert_eq!(FfiMenuClickType::QuickMove as i32, 1);
+    assert_eq!(FfiMenuClickType::Swap as i32, 2);
+    assert_eq!(FfiMenuClickType::Clone as i32, 3);
+    assert_eq!(FfiMenuClickType::Throw as i32, 4);
+    assert_eq!(FfiMenuClickType::QuickCraft as i32, 5);
+    assert_eq!(FfiMenuClickType::PickupAll as i32, 6);
+
+    // 2. FfiMenuAction
+    assert_eq!(size_of::<FfiMenuAction>(), 4);
+    assert_eq!(align_of::<FfiMenuAction>(), 4);
+    assert_eq!(FfiMenuAction::Allow as i32, 0);
+    assert_eq!(FfiMenuAction::Deny as i32, 1);
+
+    // 3. FfiMenuClickEvent
+    assert_eq!(size_of::<FfiMenuClickEvent>(), 48);
+    assert_eq!(align_of::<FfiMenuClickEvent>(), 8);
+    assert_eq!(offset_of!(FfiMenuClickEvent, menu_id), 0);
+    assert_eq!(offset_of!(FfiMenuClickEvent, container_id), 16);
+    assert_eq!(offset_of!(FfiMenuClickEvent, slot_index), 20);
+    assert_eq!(offset_of!(FfiMenuClickEvent, button), 24);
+    assert_eq!(offset_of!(FfiMenuClickEvent, click_type), 28);
+    assert_eq!(offset_of!(FfiMenuClickEvent, player_name), 32);
+
+    let event = FfiMenuClickEvent::new(
+        FfiStr::from_str("testmod:counter_menu"),
+        1,
+        8,
+        0,
+        FfiMenuClickType::Pickup,
+        FfiStr::from_str("DevPlayer"),
+    );
+    assert_eq!(
+        unsafe { event.menu_id.as_str().unwrap() },
+        "testmod:counter_menu"
+    );
+    assert_eq!(event.container_id, 1);
+    assert_eq!(event.slot_index, 8);
+    assert_eq!(event.button, 0);
+    assert_eq!(event.click_type, FfiMenuClickType::Pickup);
+    assert_eq!(unsafe { event.player_name.as_str().unwrap() }, "DevPlayer");
 }

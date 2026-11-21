@@ -4,6 +4,7 @@
 //! topological mod order, guaranteeing identical hashes across client and server
 //! during network handshake negotiation.
 
+use super::menu::RegisteredMenuEntry;
 use sha2::{Digest, Sha256};
 
 pub use redox_mc_abi::types::{
@@ -40,6 +41,28 @@ impl RegisteredItemEntry {
     }
 }
 
+/// Canonical representation of a registered block entity for in-game registration and content hashing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegisteredBlockEntityEntry {
+    /// Namespaced identifier of the block entity (e.g. "testmod:counter_be").
+    pub id: String,
+    /// Valid block identifiers that can hold this block entity.
+    pub valid_blocks: Vec<String>,
+    /// Bitmask of active behavior callbacks.
+    pub behavior_flags: u32,
+}
+
+impl RegisteredBlockEntityEntry {
+    /// Creates a new `RegisteredBlockEntityEntry`.
+    pub fn new(id: impl Into<String>, valid_blocks: Vec<String>, behavior_flags: u32) -> Self {
+        Self {
+            id: id.into(),
+            valid_blocks,
+            behavior_flags,
+        }
+    }
+}
+
 /// Canonical representation of a registered block for in-game registration and content hashing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisteredBlockEntry {
@@ -57,6 +80,8 @@ pub struct RegisteredBlockEntry {
     pub behavior_flags: u32,
     /// Whether to register an associated BlockItem.
     pub has_item: bool,
+    /// Associated block entity, if declared.
+    pub block_entity: Option<RegisteredBlockEntityEntry>,
 }
 
 impl RegisteredBlockEntry {
@@ -70,6 +95,7 @@ impl RegisteredBlockEntry {
             no_collision: false,
             behavior_flags: 0,
             has_item: true,
+            block_entity: None,
         }
     }
 }
@@ -123,6 +149,44 @@ impl RegistryHasher {
         self.hasher.update(block.behavior_flags.to_le_bytes());
         // 7. Has item boolean
         self.hasher.update([block.has_item as u8]);
+        // 8. Block entity (if attached)
+        if let Some(be) = &block.block_entity {
+            self.hasher.update([1u8]);
+            self.update_block_entity(be);
+        } else {
+            self.hasher.update([0u8]);
+        }
+    }
+
+    /// Feeds a block entity's identity and properties into the hash digest.
+    pub fn update_block_entity(&mut self, be: &RegisteredBlockEntityEntry) {
+        // Feed in deterministic binary representation:
+        // 1. ID length + ID bytes
+        self.hasher.update((be.id.len() as u32).to_le_bytes());
+        self.hasher.update(be.id.as_bytes());
+        // 2. Sorted valid block count + IDs
+        let mut sorted_valid_blocks = be.valid_blocks.clone();
+        sorted_valid_blocks.sort();
+        self.hasher
+            .update((sorted_valid_blocks.len() as u32).to_le_bytes());
+        for b in &sorted_valid_blocks {
+            self.hasher.update((b.len() as u32).to_le_bytes());
+            self.hasher.update(b.as_bytes());
+        }
+        // 3. Active behavior flags
+        self.hasher.update(be.behavior_flags.to_le_bytes());
+    }
+
+    /// Feeds a menu's identity and properties into the hash digest.
+    pub fn update_menu(&mut self, menu: &RegisteredMenuEntry) {
+        // Feed in deterministic binary representation:
+        // 1. Tag "menu"
+        self.hasher.update(b"menu");
+        // 2. ID length + ID bytes
+        self.hasher.update((menu.id.len() as u32).to_le_bytes());
+        self.hasher.update(menu.id.as_bytes());
+        // 3. Slot count
+        self.hasher.update((menu.slots as u32).to_le_bytes());
     }
 
     /// Finalizes the hash and returns the raw 32-byte SHA-256 digest.
@@ -142,16 +206,85 @@ impl RegistryHasher {
     }
 }
 
+/// Fluent builder for constructing and computing registry content hashes.
+#[derive(Default, Clone)]
+pub struct RegistryHashBuilder {
+    items: Vec<RegisteredItemEntry>,
+    blocks: Vec<RegisteredBlockEntry>,
+    block_entities: Vec<RegisteredBlockEntityEntry>,
+    menus: Vec<RegisteredMenuEntry>,
+}
+
+impl RegistryHashBuilder {
+    /// Creates a new `RegistryHashBuilder`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds an item to the hash computation.
+    pub fn add_item(&mut self, id: impl Into<String>, max_stack_size: u32) -> &mut Self {
+        let mut item = RegisteredItemEntry::new(id);
+        item.max_stack_size = max_stack_size;
+        self.items.push(item);
+        self
+    }
+
+    /// Adds a block to the hash computation.
+    pub fn add_block(&mut self, block: RegisteredBlockEntry) -> &mut Self {
+        self.blocks.push(block);
+        self
+    }
+
+    /// Adds a block entity to the hash computation.
+    pub fn add_block_entity(
+        &mut self,
+        id: impl Into<String>,
+        valid_blocks: &[&str],
+        behavior_flags: u32,
+    ) -> &mut Self {
+        self.block_entities.push(RegisteredBlockEntityEntry {
+            id: id.into(),
+            valid_blocks: valid_blocks.iter().map(|s| s.to_string()).collect(),
+            behavior_flags,
+        });
+        self
+    }
+
+    /// Adds a container menu to the hash computation.
+    pub fn add_menu(
+        &mut self,
+        id: impl Into<String>,
+        slots: usize,
+        title: impl Into<String>,
+    ) -> &mut Self {
+        self.menus.push(RegisteredMenuEntry::new(id, slots, title));
+        self
+    }
+
+    /// Computes the final SHA-256 hex digest.
+    pub fn compute_hex(&self) -> String {
+        compute_full_registry_hash_all(&self.items, &self.blocks, &self.block_entities, &self.menus)
+    }
+}
+
 /// Computes a canonical SHA-256 hex hash from a slice of registered items.
 pub fn compute_registry_hash(items: &[RegisteredItemEntry]) -> String {
     compute_full_registry_hash(items, &[])
 }
 
-/// Computes a canonical SHA-256 hex hash from slices of registered items and blocks.
-pub fn compute_full_registry_hash(
+/// Computes a canonical SHA-256 hex hash from slices of registered items, blocks, block entities, and menus.
+pub fn compute_full_registry_hash_all(
     items: &[RegisteredItemEntry],
     blocks: &[RegisteredBlockEntry],
+    block_entities: &[RegisteredBlockEntityEntry],
+    menus: &[RegisteredMenuEntry],
 ) -> String {
+    let mut sorted_entities: Vec<_> = block_entities.to_vec();
+    sorted_entities.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut sorted_menus: Vec<_> = menus.to_vec();
+    sorted_menus.sort_by(|a, b| a.id.cmp(&b.id));
+
     let mut hasher = RegistryHasher::new();
     for item in items {
         hasher.update_item(item);
@@ -159,25 +292,69 @@ pub fn compute_full_registry_hash(
     for block in blocks {
         hasher.update_block(block);
     }
+    for be in &sorted_entities {
+        hasher.update_block_entity(be);
+    }
+    for menu in &sorted_menus {
+        hasher.update_menu(menu);
+    }
     hasher.finalize_hex()
+}
+
+/// Computes a canonical SHA-256 hex hash from slices of registered items, blocks, and block entities.
+pub fn compute_full_registry_hash_with_entities(
+    items: &[RegisteredItemEntry],
+    blocks: &[RegisteredBlockEntry],
+    block_entities: &[RegisteredBlockEntityEntry],
+) -> String {
+    compute_full_registry_hash_all(items, blocks, block_entities, &[])
+}
+
+/// Computes a canonical SHA-256 hex hash from slices of registered items and blocks.
+pub fn compute_full_registry_hash(
+    items: &[RegisteredItemEntry],
+    blocks: &[RegisteredBlockEntry],
+) -> String {
+    compute_full_registry_hash_with_entities(items, blocks, &[])
 }
 
 /// Computes the registry content hash, returning `None` when no custom content
 /// was registered.
-///
-/// An empty registry must not produce the SHA-256 digest of an empty input
-/// (`e3b0c442...`), because that would make every vanilla server require a
-/// handshake with a hash no client can produce unless it also registers
-/// nothing. `None` is the canonical "no custom content" marker.
+pub fn compute_registry_content_hash_all(
+    items: &[RegisteredItemEntry],
+    blocks: &[RegisteredBlockEntry],
+    block_entities: &[RegisteredBlockEntityEntry],
+    menus: &[RegisteredMenuEntry],
+) -> Option<String> {
+    if items.is_empty() && blocks.is_empty() && block_entities.is_empty() && menus.is_empty() {
+        None
+    } else {
+        Some(compute_full_registry_hash_all(
+            items,
+            blocks,
+            block_entities,
+            menus,
+        ))
+    }
+}
+
+/// Computes the registry content hash, returning `None` when no custom content
+/// was registered.
+pub fn compute_registry_content_hash_full(
+    items: &[RegisteredItemEntry],
+    blocks: &[RegisteredBlockEntry],
+    block_entities: &[RegisteredBlockEntityEntry],
+) -> Option<String> {
+    compute_registry_content_hash_all(items, blocks, block_entities, &[])
+}
+
+/// Computes the registry content hash, returning `None` when no custom content
+/// was registered.
 pub fn compute_registry_content_hash(
     items: &[RegisteredItemEntry],
     blocks: &[RegisteredBlockEntry],
 ) -> Option<String> {
-    if items.is_empty() && blocks.is_empty() {
-        None
-    } else {
-        Some(compute_full_registry_hash(items, blocks))
-    }
+    compute_registry_content_hash_full(items, blocks, &[])
 }
 
 static REGISTRY_HASH: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);

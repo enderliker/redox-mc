@@ -2,7 +2,9 @@
 
 pub mod assets;
 pub mod block;
+pub mod block_entity;
 pub mod event;
+pub mod gui;
 pub mod item;
 pub mod macros;
 pub mod network;
@@ -18,7 +20,16 @@ pub use block::{
     clear_registered_blocks, get_registered_blocks, register_block, BlockDefinition,
     FLAG_HAS_DESTROY, FLAG_HAS_STEP_ON, FLAG_HAS_USE_WITHOUT_ITEM,
 };
+pub use block_entity::{
+    clear_handlers, dispatch_load, dispatch_save, dispatch_tick, on_load, on_save, on_tick,
+    BlockEntityDefinition, FLAG_HAS_PERSISTENCE, FLAG_HAS_TICK,
+};
+
 pub use event::{CancellableEvent, Event, EventBus, EventPriority, EventResult};
+pub use gui::{
+    clear_registered_menus, get_registered_menus, on_close, on_open, on_slot_click, register_menu,
+    MenuAction, MenuClickEvent, MenuClickType, MenuDefinition,
+};
 pub use item::{
     clear_registered_items, get_registered_items, register_item, ItemDefinition,
     FLAG_HAS_FINISH_USING, FLAG_HAS_USE, FLAG_HAS_USE_ON,

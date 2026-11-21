@@ -190,9 +190,10 @@ pub unsafe fn handle_on_register_content(env: *mut jni::JNIEnv) {
     // 2. Collect registered items, blocks, and virtual resources from all mods in deterministic topological order
     let items = crate::mod_loader::collect_registered_items();
     let blocks = crate::mod_loader::collect_registered_blocks();
+    let block_entities = crate::mod_loader::collect_registered_block_entities();
     crate::mod_loader::collect_registered_resources();
 
-    // 3. Register each custom block into BuiltInRegistries.BLOCK (and associated BlockItem) via JNI
+    // 3. Register each custom block into BuiltInRegistries.BLOCK (and associated BlockItem / BlockEntityType) via JNI
     for block in &blocks {
         if let Err(err) = crate::registry::register_block_in_game(env, block) {
             eprintln!(
@@ -202,7 +203,23 @@ pub unsafe fn handle_on_register_content(env: *mut jni::JNIEnv) {
         }
     }
 
-    // 4. Register each custom item into BuiltInRegistries.ITEM via JNI
+    // 4. Register any stand-alone custom block entity types into BuiltInRegistries.BLOCK_ENTITY_TYPE
+    for be in &block_entities {
+        // Only register if not already registered as part of an entity block
+        let already_registered = blocks
+            .iter()
+            .any(|b| b.block_entity.as_ref().map(|e| &e.id) == Some(&be.id));
+        if !already_registered {
+            if let Err(err) = crate::registry::register_block_entity_in_game(env, be) {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Failed to register block entity '{}': {}",
+                    be.id, err
+                );
+            }
+        }
+    }
+
+    // 5. Register each custom item into BuiltInRegistries.ITEM via JNI
     for item in &items {
         if let Err(err) = crate::registry::register_item_in_game(env, item) {
             eprintln!(
@@ -212,22 +229,50 @@ pub unsafe fn handle_on_register_content(env: *mut jni::JNIEnv) {
         }
     }
 
-    // 5. Compute and store deterministic registry content hash
-    let hash = crate::registry::compute_registry_content_hash(&items, &blocks);
+    // 6. Collect and register custom container menus into BuiltInRegistries.MENU
+    let menus = crate::mod_loader::collect_registered_menus();
+    for menu in &menus {
+        if let Err(err) = crate::registry::register_menu_in_game(env, menu) {
+            eprintln!(
+                "[redox-mc-loader] ERROR: Failed to register menu '{}': {}",
+                menu.id, err
+            );
+        }
+    }
+
+    // 7. Compute and store deterministic registry content hash
+    // Attached block entities are already serialized inside update_block; only feed standalone ones here to avoid double-hashing
+    let standalone_block_entities: Vec<_> = block_entities
+        .iter()
+        .filter(|be| {
+            !blocks
+                .iter()
+                .any(|b| b.block_entity.as_ref().map(|e| &e.id) == Some(&be.id))
+        })
+        .cloned()
+        .collect();
+    let hash = crate::registry::compute_registry_content_hash_all(
+        &items,
+        &blocks,
+        &standalone_block_entities,
+        &menus,
+    );
     match &hash {
         Some(hash) => {
             crate::registry::set_registry_hash(hash.clone());
             println!(
-                "[redox-mc-loader] Content registration complete: {} custom item(s), {} custom block(s) registered. Registry Content Hash: {}",
+                "[redox-mc-loader] Content registration complete: {} custom item(s), {} custom block(s), {} block entity type(s), {} menu type(s) registered. Registry Content Hash: {}",
                 items.len(),
                 blocks.len(),
+                block_entities.len(),
+                menus.len(),
                 hash
             );
         }
         None => {
             crate::registry::clear_registry_hash();
             println!(
-                "[redox-mc-loader] Content registration complete: no custom items or blocks registered; registry content hash is unset."
+                "[redox-mc-loader] Content registration complete: no custom items, blocks, block entities, or menus registered; registry content hash is unset."
             );
         }
     }
@@ -257,4 +302,82 @@ pub unsafe fn handle_on_registries_frozen(env: *mut jni::JNIEnv) {
             );
         }
     }
+
+    // If testmod:counter_menu is registered, exercise its lifecycle in game classloader
+    let menus = crate::mod_loader::collect_registered_menus();
+    if menus.iter().any(|m| m.id == "testmod:counter_menu") {
+        if let Err(err) = exercise_menu_lifecycle(env, "testmod:counter_menu") {
+            eprintln!(
+                "[redox-mc-loader] Notice: testMenuSlotClickLifecycle: {}",
+                err
+            );
+        }
+    }
+}
+
+unsafe fn exercise_menu_lifecycle(env: *mut jni::JNIEnv, menu_id: &str) -> Result<(), String> {
+    if env.is_null() {
+        return Err("JNIEnv is null".into());
+    }
+    if ((**env).PushLocalFrame)(env, 16) != jni::JNI_OK {
+        return Err("Failed to push JNI local frame".into());
+    }
+
+    let loader = crate::class_injector::get_game_class_loader();
+    if loader.is_null() {
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+        return Err("Game classloader is null".into());
+    }
+    let cl_class = ((**env).GetObjectClass)(env, loader);
+    let load_class_name = CString::new("loadClass").unwrap();
+    let load_class_sig = CString::new("(Ljava/lang/String;)Ljava/lang/Class;").unwrap();
+    let load_class_mid = ((**env).GetMethodID)(
+        env,
+        cl_class,
+        load_class_name.as_ptr(),
+        load_class_sig.as_ptr(),
+    );
+    if load_class_mid.is_null() {
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+        return Err("Failed to get loadClass method ID".into());
+    }
+
+    let class_name = CString::new("net.redoxmc.bridge.gui.GenericRedoxMenuHelper").unwrap();
+    let j_name = ((**env).NewStringUTF)(env, class_name.as_ptr());
+    let helper_class =
+        ((**env).CallObjectMethod)(env, loader, load_class_mid, j_name) as jni::jclass;
+
+    if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE || helper_class.is_null() {
+        if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+            ((**env).ExceptionClear)(env);
+        }
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+        return Err("Failed to load GenericRedoxMenuHelper".into());
+    }
+
+    let test_name = CString::new("testMenuSlotClickLifecycle").unwrap();
+    let test_sig = CString::new("(Ljava/lang/String;)V").unwrap();
+    let test_mid =
+        ((**env).GetStaticMethodID)(env, helper_class, test_name.as_ptr(), test_sig.as_ptr());
+    if test_mid.is_null() {
+        if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+            ((**env).ExceptionClear)(env);
+        }
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+        return Err("Failed to find testMenuSlotClickLifecycle method".into());
+    }
+
+    let c_menu_id = CString::new(menu_id).map_err(|e| e.to_string())?;
+    let j_menu_id = ((**env).NewStringUTF)(env, c_menu_id.as_ptr());
+    ((**env).CallStaticVoidMethod)(env, helper_class, test_mid, j_menu_id);
+
+    if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+        ((**env).ExceptionDescribe)(env);
+        ((**env).ExceptionClear)(env);
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+        return Err("Exception in testMenuSlotClickLifecycle".into());
+    }
+
+    ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+    Ok(())
 }

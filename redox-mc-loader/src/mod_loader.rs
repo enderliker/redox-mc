@@ -71,6 +71,14 @@ pub struct LoadedMod {
         Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32)>,
     pub on_block_destroy_fn:
         Option<unsafe extern "C" fn(redox_mc_abi::types::FfiStr, i32, i32, i32)>,
+    pub on_block_entity_tick_fn: Option<redox_mc_abi::vtable::BlockEntityTickFn>,
+    pub on_block_entity_save_fn: Option<redox_mc_abi::vtable::BlockEntitySaveFn>,
+    pub on_block_entity_load_fn: Option<redox_mc_abi::vtable::BlockEntityLoadFn>,
+    pub on_menu_open_fn: Option<redox_mc_abi::vtable::MenuOpenFn>,
+    pub on_menu_slot_click_fn: Option<redox_mc_abi::vtable::MenuSlotClickFn>,
+    pub on_menu_close_fn: Option<redox_mc_abi::vtable::MenuCloseFn>,
+    /// Frees a buffer allocated by this mod.
+    pub free_buffer_fn: Option<unsafe extern "C" fn(redox_mc_abi::types::FfiBuffer)>,
     /// Receives inbound mod channel payloads together with sender identity.
     pub dispatch_network_payload_fn: Option<redox_mc_abi::types::NetworkDispatchFn>,
     /// Drains the mod's queued outbound network messages.
@@ -561,6 +569,12 @@ impl ModManager {
             *mut u32,
             *mut bool,
         ) -> redox_mc_abi::types::FfiStatus;
+        type GetBlockEntityInfoFn = unsafe extern "C" fn(
+            usize,
+            *mut bool,
+            *mut redox_mc_abi::types::FfiStr,
+            *mut u32,
+        ) -> redox_mc_abi::types::FfiStatus;
 
         let mut blocks = Vec::new();
 
@@ -574,6 +588,11 @@ impl ModManager {
                 loaded
                     ._library
                     .get::<GetBlockAtFn>(b"redox_mod_get_block_at\0")
+            };
+            let get_be_info_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetBlockEntityInfoFn>(b"redox_mod_get_block_entity_info_at\0")
             };
 
             if let (Ok(get_count), Ok(get_at)) = (get_count_sym, get_at_sym) {
@@ -602,6 +621,26 @@ impl ModManager {
 
                     if status.is_success() {
                         if let Ok(id_str) = unsafe { ffi_id.as_str() } {
+                            let mut block_entity = None;
+                            if let Ok(get_be_info) = &get_be_info_sym {
+                                let mut has_be = false;
+                                let mut ffi_be_id = redox_mc_abi::types::FfiStr::EMPTY;
+                                let mut be_flags = 0u32;
+                                let be_status = unsafe {
+                                    get_be_info(i, &mut has_be, &mut ffi_be_id, &mut be_flags)
+                                };
+                                if be_status.is_success() && has_be {
+                                    if let Ok(be_id_str) = unsafe { ffi_be_id.as_str() } {
+                                        block_entity =
+                                            Some(crate::registry::RegisteredBlockEntityEntry {
+                                                id: be_id_str.to_string(),
+                                                valid_blocks: vec![id_str.to_string()],
+                                                behavior_flags: be_flags,
+                                            });
+                                    }
+                                }
+                            }
+
                             blocks.push(crate::registry::RegisteredBlockEntry {
                                 id: id_str.to_string(),
                                 destroy_time,
@@ -610,6 +649,7 @@ impl ModManager {
                                 no_collision,
                                 behavior_flags,
                                 has_item,
+                                block_entity,
                             });
                         }
                     } else {
@@ -623,6 +663,75 @@ impl ModManager {
         }
 
         blocks
+    }
+
+    /// Collects all registered block entity definitions from loaded mods in deterministic order.
+    pub fn collect_registered_block_entities(
+        &self,
+    ) -> Vec<crate::registry::RegisteredBlockEntityEntry> {
+        let blocks = self.collect_registered_blocks();
+        let mut list = Vec::new();
+        for b in blocks {
+            if let Some(be) = b.block_entity {
+                list.push(be);
+            }
+        }
+        list
+    }
+
+    /// Collects all registered menu definitions from loaded mods in deterministic order.
+    pub fn collect_registered_menus(&self) -> Vec<crate::registry::RegisteredMenuEntry> {
+        type GetMenuCountFn = unsafe extern "C" fn() -> usize;
+        type GetMenuAtFn = unsafe extern "C" fn(
+            usize,
+            *mut redox_mc_abi::types::FfiStr,
+            *mut usize,
+            *mut redox_mc_abi::types::FfiStr,
+        ) -> redox_mc_abi::types::FfiStatus;
+
+        let mut menus = Vec::new();
+
+        for loaded in &self.loaded_mods {
+            let get_count_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetMenuCountFn>(b"redox_mod_get_menu_count\0")
+            };
+            let get_at_sym = unsafe {
+                loaded
+                    ._library
+                    .get::<GetMenuAtFn>(b"redox_mod_get_menu_at\0")
+            };
+
+            if let (Ok(get_count), Ok(get_at)) = (get_count_sym, get_at_sym) {
+                let count = unsafe { get_count() };
+                for i in 0..count {
+                    let mut ffi_id = redox_mc_abi::types::FfiStr::EMPTY;
+                    let mut slots = 9usize;
+                    let mut ffi_title = redox_mc_abi::types::FfiStr::EMPTY;
+
+                    let status = unsafe { get_at(i, &mut ffi_id, &mut slots, &mut ffi_title) };
+
+                    if status.is_success() {
+                        if let Ok(id_str) = unsafe { ffi_id.as_str() } {
+                            let title_str = unsafe { ffi_title.as_str().unwrap_or(id_str) };
+                            menus.push(crate::registry::RegisteredMenuEntry {
+                                id: id_str.to_string(),
+                                slots,
+                                title: title_str.to_string(),
+                            });
+                        }
+                    } else {
+                        eprintln!(
+                            "[redox-mc-loader] ERROR: Mod '{}' redox_mod_get_menu_at({}) returned status {:?}",
+                            loaded.manifest.id, i, status
+                        );
+                    }
+                }
+            }
+        }
+
+        menus
     }
 
     /// Collects and registers all virtual resources from loaded mods in deterministic order.
@@ -872,6 +981,76 @@ fn load_candidate(
             .map(|s| *s)
     };
 
+    // Resolve block entity callbacks (from vtable or explicit symbol)
+    let on_block_entity_tick_fn = if let Some(vtable) = vtable_opt {
+        vtable.on_block_entity_tick
+    } else {
+        let sym = unsafe {
+            boxed_lib
+                .get::<redox_mc_abi::vtable::BlockEntityTickFn>(b"redox_mod_on_block_entity_tick\0")
+        };
+        sym.ok().map(|s| *s)
+    };
+
+    let on_block_entity_save_fn = if let Some(vtable) = vtable_opt {
+        vtable.on_block_entity_save
+    } else {
+        let sym = unsafe {
+            boxed_lib
+                .get::<redox_mc_abi::vtable::BlockEntitySaveFn>(b"redox_mod_on_block_entity_save\0")
+        };
+        sym.ok().map(|s| *s)
+    };
+
+    let on_block_entity_load_fn = if let Some(vtable) = vtable_opt {
+        vtable.on_block_entity_load
+    } else {
+        let sym = unsafe {
+            boxed_lib
+                .get::<redox_mc_abi::vtable::BlockEntityLoadFn>(b"redox_mod_on_block_entity_load\0")
+        };
+        sym.ok().map(|s| *s)
+    };
+
+    let on_menu_open_fn = if let Some(vtable) = vtable_opt {
+        vtable.on_menu_open
+    } else {
+        let sym = unsafe {
+            boxed_lib.get::<redox_mc_abi::vtable::MenuOpenFn>(b"redox_mod_on_menu_open\0")
+        };
+        sym.ok().map(|s| *s)
+    };
+
+    let on_menu_slot_click_fn = if let Some(vtable) = vtable_opt {
+        vtable.on_menu_slot_click
+    } else {
+        let sym = unsafe {
+            boxed_lib
+                .get::<redox_mc_abi::vtable::MenuSlotClickFn>(b"redox_mod_on_menu_slot_click\0")
+        };
+        sym.ok().map(|s| *s)
+    };
+
+    let on_menu_close_fn = if let Some(vtable) = vtable_opt {
+        vtable.on_menu_close
+    } else {
+        let sym = unsafe {
+            boxed_lib.get::<redox_mc_abi::vtable::MenuCloseFn>(b"redox_mod_on_menu_close\0")
+        };
+        sym.ok().map(|s| *s)
+    };
+
+    let free_buffer_fn = if let Some(vtable) = vtable_opt {
+        Some(vtable.free_buffer)
+    } else {
+        let sym = unsafe {
+            boxed_lib.get::<unsafe extern "C" fn(redox_mc_abi::types::FfiBuffer)>(
+                b"redox_mod_free_buffer\0",
+            )
+        };
+        sym.ok().map(|s| *s)
+    };
+
     // Resolve typed network channel callbacks (Task 6.3).
     let dispatch_network_payload_fn = unsafe {
         boxed_lib
@@ -916,6 +1095,13 @@ fn load_candidate(
         on_block_use_without_item_fn,
         on_block_step_on_fn,
         on_block_destroy_fn,
+        on_block_entity_tick_fn,
+        on_block_entity_save_fn,
+        on_block_entity_load_fn,
+        on_menu_open_fn,
+        on_menu_slot_click_fn,
+        on_menu_close_fn,
+        free_buffer_fn,
         dispatch_network_payload_fn,
         drain_network_outbox_fn,
         set_running_side_fn,
@@ -1094,6 +1280,26 @@ pub fn collect_registered_blocks() -> Vec<crate::registry::RegisteredBlockEntry>
     let guard = MOD_MANAGER.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(manager) = guard.as_ref() {
         manager.collect_registered_blocks()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Collects all registered block entity definitions from loaded mods in deterministic order.
+pub fn collect_registered_block_entities() -> Vec<crate::registry::RegisteredBlockEntityEntry> {
+    let guard = MOD_MANAGER.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(manager) = guard.as_ref() {
+        manager.collect_registered_block_entities()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Collects all registered menu definitions from loaded mods in deterministic order.
+pub fn collect_registered_menus() -> Vec<crate::registry::RegisteredMenuEntry> {
+    let guard = MOD_MANAGER.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(manager) = guard.as_ref() {
+        manager.collect_registered_menus()
     } else {
         Vec::new()
     }
@@ -1333,6 +1539,177 @@ pub fn on_block_destroy(block_id: &str, x: i32, y: i32, z: i32) {
     for loaded in snapshot.iter() {
         if let Some(cb) = loaded.on_block_destroy_fn {
             unsafe { cb(ffi_id, x, y, z) };
+        }
+    }
+}
+
+/// Dispatches block entity tick to loaded mods.
+pub fn on_block_entity_tick(id: &str, x: i32, y: i32, z: i32) {
+    notify_network_side(ModSide::Server);
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(id);
+    let snapshot = dispatcher::snapshot();
+
+    for loaded in snapshot.iter() {
+        if let Some(cb) = loaded.on_block_entity_tick_fn {
+            let status = unsafe { cb(ffi_id, x, y, z) };
+            if let Err(safety_err) = crate::safety::check_ffi_status(&loaded.manifest.id, status) {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Mod '{}' on_block_entity_tick failed: {}",
+                    loaded.manifest.id, safety_err
+                );
+            }
+        }
+    }
+}
+
+/// Dispatches block entity save to loaded mods.
+/// Returns serialized state string if any mod returns non-empty data.
+pub fn on_block_entity_save(id: &str, x: i32, y: i32, z: i32) -> Option<String> {
+    notify_network_side(ModSide::Server);
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(id);
+    let snapshot = dispatcher::snapshot();
+
+    for loaded in snapshot.iter() {
+        if let Some(cb) = loaded.on_block_entity_save_fn {
+            let mut out_buf = redox_mc_abi::types::FfiBuffer::NULL;
+            let status = unsafe { cb(ffi_id, x, y, z, &mut out_buf) };
+            if let Err(safety_err) = crate::safety::check_ffi_status(&loaded.manifest.id, status) {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Mod '{}' on_block_entity_save failed: {}",
+                    loaded.manifest.id, safety_err
+                );
+                continue;
+            }
+            if !out_buf.is_null() {
+                let s = if out_buf.len > 0 {
+                    unsafe {
+                        let slice = std::slice::from_raw_parts(out_buf.ptr, out_buf.len);
+                        String::from_utf8(slice.to_vec()).ok()
+                    }
+                } else {
+                    None
+                };
+                if let Some(free_fn) = loaded.free_buffer_fn {
+                    unsafe { free_fn(out_buf) };
+                }
+                if let Some(valid_str) = s {
+                    return Some(valid_str);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Dispatches block entity load to loaded mods.
+pub fn on_block_entity_load(id: &str, x: i32, y: i32, z: i32, data: &str) {
+    notify_network_side(ModSide::Server);
+    let ffi_id = redox_mc_abi::types::FfiStr::from_str(id);
+    let ffi_data = redox_mc_abi::types::FfiStr::from_str(data);
+    let snapshot = dispatcher::snapshot();
+
+    for loaded in snapshot.iter() {
+        if let Some(cb) = loaded.on_block_entity_load_fn {
+            let status = unsafe { cb(ffi_id, x, y, z, ffi_data) };
+            if let Err(safety_err) = crate::safety::check_ffi_status(&loaded.manifest.id, status) {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Mod '{}' on_block_entity_load failed: {}",
+                    loaded.manifest.id, safety_err
+                );
+            }
+        }
+    }
+}
+
+/// Dispatches menu open to loaded mods.
+pub fn on_menu_open(menu_id: &str, container_id: i32, player_name: &str) {
+    notify_network_side(ModSide::Server);
+    let ffi_menu_id = redox_mc_abi::types::FfiStr::from_str(menu_id);
+    let ffi_player_name = redox_mc_abi::types::FfiStr::from_str(player_name);
+    let snapshot = dispatcher::snapshot();
+
+    for loaded in snapshot.iter() {
+        if let Some(cb) = loaded.on_menu_open_fn {
+            let status = unsafe { cb(ffi_menu_id, container_id, ffi_player_name) };
+            if let Err(safety_err) = crate::safety::check_ffi_status(&loaded.manifest.id, status) {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Mod '{}' on_menu_open failed: {}",
+                    loaded.manifest.id, safety_err
+                );
+            }
+        }
+    }
+}
+
+/// Dispatches menu slot click to loaded mods.
+/// Returns 0 for Allow, 1 for Deny.
+pub fn on_menu_slot_click(
+    menu_id: &str,
+    container_id: i32,
+    slot_index: i32,
+    button: i32,
+    click_type: i32,
+    player_name: &str,
+) -> i32 {
+    notify_network_side(ModSide::Server);
+    let click_type_enum = match click_type {
+        0 => redox_mc_abi::types::FfiMenuClickType::Pickup,
+        1 => redox_mc_abi::types::FfiMenuClickType::QuickMove,
+        2 => redox_mc_abi::types::FfiMenuClickType::Swap,
+        3 => redox_mc_abi::types::FfiMenuClickType::Clone,
+        4 => redox_mc_abi::types::FfiMenuClickType::Throw,
+        5 => redox_mc_abi::types::FfiMenuClickType::QuickCraft,
+        6 => redox_mc_abi::types::FfiMenuClickType::PickupAll,
+        _ => redox_mc_abi::types::FfiMenuClickType::Pickup,
+    };
+
+    let event = redox_mc_abi::types::FfiMenuClickEvent::new(
+        redox_mc_abi::types::FfiStr::from_str(menu_id),
+        container_id,
+        slot_index,
+        button,
+        click_type_enum,
+        redox_mc_abi::types::FfiStr::from_str(player_name),
+    );
+
+    let snapshot = dispatcher::snapshot();
+    let mut final_action = 0; // Allow
+
+    for loaded in snapshot.iter() {
+        if let Some(cb) = loaded.on_menu_slot_click_fn {
+            let res = unsafe { cb(&event) };
+            if let Err(safety_err) = crate::safety::check_ffi_result(&loaded.manifest.id, res) {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Mod '{}' on_menu_slot_click failed: {}",
+                    loaded.manifest.id, safety_err
+                );
+            } else if let Ok(action) = res.into_result() {
+                if action == redox_mc_abi::types::FfiMenuAction::Deny {
+                    final_action = 1; // Deny
+                }
+            }
+        }
+    }
+
+    final_action
+}
+
+/// Dispatches menu close to loaded mods.
+pub fn on_menu_close(menu_id: &str, container_id: i32, player_name: &str) {
+    notify_network_side(ModSide::Server);
+    let ffi_menu_id = redox_mc_abi::types::FfiStr::from_str(menu_id);
+    let ffi_player_name = redox_mc_abi::types::FfiStr::from_str(player_name);
+    let snapshot = dispatcher::snapshot();
+
+    for loaded in snapshot.iter() {
+        if let Some(cb) = loaded.on_menu_close_fn {
+            let status = unsafe { cb(ffi_menu_id, container_id, ffi_player_name) };
+            if let Err(safety_err) = crate::safety::check_ffi_status(&loaded.manifest.id, status) {
+                eprintln!(
+                    "[redox-mc-loader] ERROR: Mod '{}' on_menu_close failed: {}",
+                    loaded.manifest.id, safety_err
+                );
+            }
         }
     }
 }

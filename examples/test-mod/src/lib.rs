@@ -13,6 +13,7 @@ const PONG_CHANNEL: &str = "testmod:pong";
 const ACK_CHANNEL: &str = "testmod:ack";
 
 static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
+static BE_COUNTER: AtomicU64 = AtomicU64::new(0);
 static PING_NONCE: AtomicU64 = AtomicU64::new(0);
 static PING_SENT: AtomicBool = AtomicBool::new(false);
 static PONG_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -241,6 +242,48 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
     redox_mc_api::block::register_block(ruby_block);
     println!("[test-mod] Registered custom block: 'testmod:ruby_block' with declarative cube model and loot table");
 
+    let counter_be = redox_mc_api::block_entity::BlockEntityDefinition::new("testmod:counter_be")
+        .has_tick(true)
+        .has_persistence(true);
+    let counter_block = redox_mc_api::block::BlockDefinition::new("testmod:counter_block")
+        .strength(2.0)
+        .cube_model("testmod:block/ruby_block")
+        .with_block_entity(counter_be);
+    redox_mc_api::block::register_block(counter_block);
+    println!("[test-mod] Registered custom block with entity: 'testmod:counter_block' -> 'testmod:counter_be'");
+
+    redox_mc_api::block_entity::on_tick(|id, x, y, z| {
+        let count = BE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+        if count <= 5 || count.is_multiple_of(20) {
+            println!(
+                "[test-mod] BlockEntity tick at ({}, {}, {}) (id='{}', counter={})",
+                x, y, z, id, count
+            );
+        }
+    });
+
+    redox_mc_api::block_entity::on_save(|id, x, y, z| {
+        let count = BE_COUNTER.load(Ordering::SeqCst);
+        println!(
+            "[test-mod] BlockEntity save at ({}, {}, {}) (id='{}', counter={})",
+            x, y, z, id, count
+        );
+        Some(format!("counter={count}"))
+    });
+
+    redox_mc_api::block_entity::on_load(|id, x, y, z, data| {
+        println!(
+            "[test-mod] BlockEntity load at ({}, {}, {}) (id='{}', data='{}')",
+            x, y, z, id, data
+        );
+        if let Some(val_str) = data.strip_prefix("counter=") {
+            if let Ok(val) = val_str.parse::<u64>() {
+                BE_COUNTER.store(val, Ordering::SeqCst);
+                println!("[test-mod] BlockEntity restored counter={}", val);
+            }
+        }
+    });
+
     // Register in-memory virtual recipe for testmod:ruby
     redox_mc_api::resource::register_data_resource(
         "testmod",
@@ -258,6 +301,45 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
 }"#,
     );
     println!("[test-mod] Registered in-memory virtual recipe for 'testmod:ruby'");
+
+    // Register custom container menu: testmod:counter_menu
+    let counter_menu = redox_mc_api::gui::MenuDefinition::new("testmod:counter_menu")
+        .slots(9)
+        .title("Counter Menu");
+    redox_mc_api::gui::register_menu(counter_menu);
+    println!("[test-mod] Registered custom menu: 'testmod:counter_menu' with 9 slots");
+
+    redox_mc_api::gui::on_open(|menu_id, container_id, player_name| {
+        println!(
+            "[test-mod] Menu opened: id='{}', container_id={}, player='{}'",
+            menu_id, container_id, player_name
+        );
+    });
+
+    redox_mc_api::gui::on_slot_click(|event| {
+        println!(
+            "[test-mod] Slot clicked in menu '{}': slot={}, button={}, type={:?}, player='{}'",
+            event.menu_id(),
+            event.slot_index(),
+            event.button(),
+            event.click_type(),
+            event.player_name()
+        );
+        if event.slot_index() == 8 {
+            println!("[test-mod] Denying click on slot 8!");
+            redox_mc_api::gui::MenuAction::Deny
+        } else {
+            println!("[test-mod] Allowing click on slot {}!", event.slot_index());
+            redox_mc_api::gui::MenuAction::Allow
+        }
+    });
+
+    redox_mc_api::gui::on_close(|menu_id, container_id, player_name| {
+        println!(
+            "[test-mod] Menu closed: id='{}', container_id={}, player='{}'",
+            menu_id, container_id, player_name
+        );
+    });
 
     FfiStatus::Success
 }
@@ -282,6 +364,12 @@ pub fn redox_mod_on_block_use_without_item(
         "[test-mod] Custom block interacted without item: '{}' at ({}, {}, {}) direction={}",
         id, x, y, z, direction
     );
+    if id == "testmod:counter_block" {
+        println!(
+            "[test-mod] Opening counter menu for block interaction at ({}, {}, {})",
+            x, y, z
+        );
+    }
     1 // SUCCESS
 }
 
@@ -348,3 +436,8 @@ pub fn redox_mod_on_server_chat(player_name: FfiStr, message: FfiStr) -> FfiResu
         FfiResult::ok(true)
     }
 }
+
+pub use redox_mc_api::gui::{
+    redox_mod_get_menu_at, redox_mod_get_menu_count, redox_mod_on_menu_close,
+    redox_mod_on_menu_open, redox_mod_on_menu_slot_click,
+};

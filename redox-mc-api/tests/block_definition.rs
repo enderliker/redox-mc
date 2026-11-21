@@ -140,12 +140,16 @@ fn test_block_declarative_cube_model_and_assets() {
     assert_eq!(generated.len(), 6); // blockstate, block model, item def, item legacy model, loot table, loot tables alias
 
     let paths: Vec<String> = generated.iter().map(|r| r.path.clone()).collect();
-    assert!(paths.contains(&"blockstates/ruby_block.json".to_string()));
-    assert!(paths.contains(&"models/block/ruby_block.json".to_string()));
-    assert!(paths.contains(&"items/ruby_block.json".to_string()));
-    assert!(paths.contains(&"models/item/ruby_block.json".to_string()));
-    assert!(paths.contains(&"loot_table/blocks/ruby_block.json".to_string()));
-    assert!(paths.contains(&"loot_tables/blocks/ruby_block.json".to_string()));
+    assert!(paths.iter().any(|p| p == "blockstates/ruby_block.json"));
+    assert!(paths.iter().any(|p| p == "models/block/ruby_block.json"));
+    assert!(paths.iter().any(|p| p == "items/ruby_block.json"));
+    assert!(paths.iter().any(|p| p == "models/item/ruby_block.json"));
+    assert!(paths
+        .iter()
+        .any(|p| p == "loot_table/blocks/ruby_block.json"));
+    assert!(paths
+        .iter()
+        .any(|p| p == "loot_tables/blocks/ruby_block.json"));
 
     // Verify content of blockstate
     let bs = generated

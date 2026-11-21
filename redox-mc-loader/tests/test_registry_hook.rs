@@ -204,12 +204,24 @@ fn test_mod_manager_dispatches_register_content_to_loaded_mods() {
     assert_eq!(items[0].id, "testmod:ruby");
 
     let blocks = manager.collect_registered_blocks();
-    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks.len(), 2);
     assert_eq!(blocks[0].id, "testmod:ruby_block");
     assert_eq!(blocks[0].destroy_time, 3.0);
     assert_eq!(blocks[0].explosion_resistance, 6.0);
     assert!(blocks[0].requires_tool);
     assert!(blocks[0].has_item);
+
+    assert_eq!(blocks[1].id, "testmod:counter_block");
+    assert_eq!(blocks[1].destroy_time, 2.0);
+    assert!(blocks[1].block_entity.is_some());
+    assert_eq!(
+        blocks[1].block_entity.as_ref().unwrap().id,
+        "testmod:counter_be"
+    );
+
+    let block_entities = manager.collect_registered_block_entities();
+    assert_eq!(block_entities.len(), 1);
+    assert_eq!(block_entities[0].id, "testmod:counter_be");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

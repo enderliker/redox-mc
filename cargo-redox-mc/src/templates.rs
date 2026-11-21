@@ -106,6 +106,14 @@ pub fn scaffold(project_dir: &Path, options: &ScaffoldOptions) -> Result<(), Cli
     fs::write(project_dir.join(".gitignore"), GITIGNORE)?;
     fs::write(project_dir.join("README.md"), render_readme(options))?;
 
+    // Seed the scaffolded project with repo's Cargo.lock if present so offline builds succeed
+    if let Some(repo_root) = options.api_path.parent() {
+        let repo_lock = repo_root.join("Cargo.lock");
+        if repo_lock.is_file() {
+            let _ = fs::copy(&repo_lock, project_dir.join("Cargo.lock"));
+        }
+    }
+
     Ok(())
 }
 

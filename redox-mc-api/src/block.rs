@@ -34,6 +34,8 @@ pub struct BlockDefinition {
     pub drop_item: Option<String>,
     /// Whether to generate block loot table.
     pub generate_loot_table: bool,
+    /// Optional block entity attached to this block.
+    pub block_entity: Option<crate::block_entity::BlockEntityDefinition>,
 }
 
 impl BlockDefinition {
@@ -52,6 +54,7 @@ impl BlockDefinition {
             cube_model_texture: None,
             drop_item: None,
             generate_loot_table: true,
+            block_entity: None,
         }
     }
 
@@ -139,6 +142,18 @@ impl BlockDefinition {
     /// Disables automatic generation of the block loot table.
     pub fn no_loot_table(mut self) -> Self {
         self.generate_loot_table = false;
+        self
+    }
+
+    /// Associates a block entity with this block.
+    pub fn with_block_entity(mut self, be: crate::block_entity::BlockEntityDefinition) -> Self {
+        self.block_entity = Some(be);
+        self
+    }
+
+    /// Associates a block entity with this block.
+    pub fn block_entity(mut self, be: crate::block_entity::BlockEntityDefinition) -> Self {
+        self.block_entity = Some(be);
         self
     }
 
@@ -236,7 +251,7 @@ pub unsafe extern "C" fn redox_mod_get_block_at(
             return redox_mc_abi::types::FfiStatus::NullPointer;
         }
 
-        let blocks = REGISTERED_BLOCKS.lock().unwrap();
+        let blocks = REGISTERED_BLOCKS.lock().unwrap_or_else(|e| e.into_inner());
         if index >= blocks.len() {
             return redox_mc_abi::types::FfiStatus::NotFound;
         }
@@ -254,4 +269,131 @@ pub unsafe extern "C" fn redox_mod_get_block_at(
     }));
 
     result.unwrap_or(redox_mc_abi::types::FfiStatus::Panic)
+}
+
+/// C-ABI exported symbol allowing the loader to query the block entity associated with a block at `index`.
+///
+/// # Safety
+/// Output pointers must point to valid, writable memory.
+#[no_mangle]
+pub unsafe extern "C" fn redox_mod_get_block_entity_info_at(
+    index: usize,
+    out_has_entity: *mut bool,
+    out_id: *mut redox_mc_abi::types::FfiStr,
+    out_flags: *mut u32,
+) -> redox_mc_abi::types::FfiStatus {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_has_entity.is_null() || out_id.is_null() || out_flags.is_null() {
+            return redox_mc_abi::types::FfiStatus::NullPointer;
+        }
+
+        let blocks = REGISTERED_BLOCKS.lock().unwrap_or_else(|e| e.into_inner());
+        if index >= blocks.len() {
+            return redox_mc_abi::types::FfiStatus::NotFound;
+        }
+
+        let block = &blocks[index];
+        if let Some(be) = &block.block_entity {
+            *out_has_entity = true;
+            *out_id = redox_mc_abi::types::FfiStr::from_str(be.id.as_str());
+            *out_flags = be.behavior_flags();
+        } else {
+            *out_has_entity = false;
+            *out_id = redox_mc_abi::types::FfiStr::EMPTY;
+            *out_flags = 0;
+        }
+
+        redox_mc_abi::types::FfiStatus::Success
+    }));
+
+    result.unwrap_or(redox_mc_abi::types::FfiStatus::Panic)
+}
+
+/// Fallback C-ABI exported symbol for block entity tick if mod does not provide a vtable entry.
+///
+/// # Safety
+/// Invoked by loader when a block entity ticks.
+#[no_mangle]
+pub unsafe extern "C" fn redox_mod_on_block_entity_tick(
+    id: redox_mc_abi::types::FfiStr,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> redox_mc_abi::types::FfiStatus {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let id_str = match id.as_str() {
+            Ok(s) => s,
+            Err(_) => return redox_mc_abi::types::FfiStatus::InvalidArgument,
+        };
+        crate::block_entity::dispatch_tick(id_str, x, y, z);
+        redox_mc_abi::types::FfiStatus::Success
+    }));
+    result.unwrap_or(redox_mc_abi::types::FfiStatus::Panic)
+}
+
+/// Fallback C-ABI exported symbol for block entity save if mod does not provide a vtable entry.
+///
+/// # Safety
+/// Invoked by loader when a block entity saves state.
+#[no_mangle]
+pub unsafe extern "C" fn redox_mod_on_block_entity_save(
+    id: redox_mc_abi::types::FfiStr,
+    x: i32,
+    y: i32,
+    z: i32,
+    out_buf: *mut redox_mc_abi::types::FfiBuffer,
+) -> redox_mc_abi::types::FfiStatus {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_buf.is_null() {
+            return redox_mc_abi::types::FfiStatus::NullPointer;
+        }
+        *out_buf = redox_mc_abi::types::FfiBuffer::NULL;
+        let id_str = match id.as_str() {
+            Ok(s) => s,
+            Err(_) => return redox_mc_abi::types::FfiStatus::InvalidArgument,
+        };
+        if let Some(data) = crate::block_entity::dispatch_save(id_str, x, y, z) {
+            *out_buf = redox_mc_abi::types::FfiBuffer::from_vec(data.into_bytes());
+        }
+        redox_mc_abi::types::FfiStatus::Success
+    }));
+    result.unwrap_or(redox_mc_abi::types::FfiStatus::Panic)
+}
+
+/// Fallback C-ABI exported symbol for block entity load if mod does not provide a vtable entry.
+///
+/// # Safety
+/// Invoked by loader when a block entity loads state.
+#[no_mangle]
+pub unsafe extern "C" fn redox_mod_on_block_entity_load(
+    id: redox_mc_abi::types::FfiStr,
+    x: i32,
+    y: i32,
+    z: i32,
+    data: redox_mc_abi::types::FfiStr,
+) -> redox_mc_abi::types::FfiStatus {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let id_str = match id.as_str() {
+            Ok(s) => s,
+            Err(_) => return redox_mc_abi::types::FfiStatus::InvalidArgument,
+        };
+        let data_str = match data.as_str() {
+            Ok(s) => s,
+            Err(_) => return redox_mc_abi::types::FfiStatus::InvalidArgument,
+        };
+        crate::block_entity::dispatch_load(id_str, x, y, z, data_str);
+        redox_mc_abi::types::FfiStatus::Success
+    }));
+    result.unwrap_or(redox_mc_abi::types::FfiStatus::Panic)
+}
+
+/// C-ABI exported symbol to free buffers allocated by this mod.
+///
+/// # Safety
+/// `b` must have been allocated in this mod's heap.
+#[no_mangle]
+pub unsafe extern "C" fn redox_mod_free_buffer(b: redox_mc_abi::types::FfiBuffer) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        redox_mc_abi::memory::redox_mod_free_buffer(b);
+    }));
 }

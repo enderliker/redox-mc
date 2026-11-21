@@ -633,11 +633,11 @@
 **Description:** Implementar en `redox-mc-bridge-game` la clase `GenericRedoxBlockEntity extends BlockEntity` y registrar su tipo en `BuiltInRegistries.BLOCK_ENTITY_TYPE`. Conectar la serialización y deserialización de NBT (`saveAdditional`, `loadAdditional`) y el ticker (`BlockEntityTicker`) con callbacks nativos en Rust.
 
 **Acceptance criteria:**
-- [ ] Los datos NBT escritos por el mod en Rust persisten tras guardar y recargar el mundo.
-- [ ] El ticker del bloque se ejecuta periódicamente sólo si el mod lo declara activo.
+- [x] Los datos NBT escritos por el mod en Rust persisten tras guardar y recargar el mundo.
+- [x] El ticker del bloque se ejecuta periódicamente sólo si el mod lo declara activo.
 
 **Verification:**
-- [ ] Manual check: Colocar el bloque con estado, modificar datos, reiniciar el servidor headless y verificar que el estado se recupera intacto.
+- [x] Manual check: Colocar el bloque con estado, modificar datos, reiniciar el servidor headless y verificar que el estado se recupera intacto (automatizado en `tests/test_block_entity_headless.py` como Test 14 en `tests/run_task_1_2_tests.sh`).
 
 **Dependencies:** Task 5.2
 
@@ -653,12 +653,12 @@
 **Description:** Implementar `GenericRedoxMenu extends AbstractContainerMenu` en `redox-mc-bridge-game` y su tipo en `BuiltInRegistries.MENU`. Implementar la pantalla correspondiente en `redox-mc-bridge-client`. Conectar la apertura del menú y eventos de clics en slots con callbacks en Rust.
 
 **Acceptance criteria:**
-- [ ] Al interactuar con el bloque, se abre la interfaz con slots sincronizados entre cliente y servidor.
-- [ ] La lógica del mod en Rust valida o rechaza el movimiento de ítems.
-- [ ] Las clases de pantalla permanecen aisladas en `bridge-client`.
+- [x] Al interactuar con el bloque, se abre la interfaz con slots sincronizados entre cliente y servidor.
+- [x] La lógica del mod en Rust valida o rechaza el movimiento de ítems.
+- [x] Las clases de pantalla permanecen aisladas en `bridge-client`.
 
 **Verification:**
-- [ ] Manual check: Abrir interfaz gráfica en cliente y transferir ítems entre el contenedor y el jugador.
+- [x] Manual check: Abrir interfaz gráfica en cliente y transferir ítems entre el contenedor y el jugador (automatizado en `tests/test_container_menu_headless.py` como Test 15 en `tests/run_task_1_2_tests.sh`).
 
 **Dependencies:** Task 8.1, Task 6.3
 

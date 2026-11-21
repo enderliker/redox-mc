@@ -49,8 +49,12 @@ javac -cp "${CORE_JAR_NATIVE}${CP_SEP}${MC_SERVER_JAR_NATIVE}${LIB_CP}" -d "${BU
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/event/ServerEvents.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/item/GenericRustItem.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/block/GenericRedoxBlock.java" \
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/block/GenericRedoxBlockEntity.java" \
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/block/GenericRedoxEntityBlock.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackResources.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/resource/VirtualModPackRepositorySource.java" \
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/gui/GenericRedoxMenu.java" \
+    "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/gui/GenericRedoxMenuHelper.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModRawPayload.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModHandshakePayload.java" \
     "${SCRIPT_DIR}/bridge-game/src/main/java/net/redoxmc/bridge/network/ModNetworkBridge.java" \
@@ -60,7 +64,8 @@ jar cf "${BUILD_DIR}/bridge-game.jar" -C "${BUILD_DIR}/game-classes" .
 
 echo "[redox-mc-bridge] Compiling bridge-client..."
 javac -cp "${CORE_JAR_NATIVE}${CP_SEP}${GAME_JAR_NATIVE}" -d "${BUILD_DIR}/client-classes" \
-    "${SCRIPT_DIR}/bridge-client/src/main/java/net/redoxmc/bridge/client/RedoxClientBridge.java"
+    "${SCRIPT_DIR}/bridge-client/src/main/java/net/redoxmc/bridge/client/RedoxClientBridge.java" \
+    "${SCRIPT_DIR}/bridge-client/src/main/java/net/redoxmc/bridge/client/gui/GenericRedoxScreen.java"
 jar cf "${BUILD_DIR}/bridge-client.jar" -C "${BUILD_DIR}/client-classes" .
 
 echo "[redox-mc-bridge] Compiling test classes..."

@@ -52,7 +52,97 @@ unsafe fn register_block_in_game_inner(
         return Err("Failed to get loadClass method ID".into());
     }
 
+    if let Some(be) = &block.block_entity {
+        let entity_block_class_name =
+            CString::new("net.redoxmc.bridge.block.GenericRedoxEntityBlock").unwrap();
+        let j_entity_name = ((**env).NewStringUTF)(env, entity_block_class_name.as_ptr());
+        let entity_block_class =
+            ((**env).CallObjectMethod)(env, loader, load_class_mid, j_entity_name) as jni::jclass;
+
+        if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE || entity_block_class.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return Err("Failed to load GenericRedoxEntityBlock class".into());
+        }
+
+        let register_method_name = CString::new("registerWithEntity").unwrap();
+        let register_sig = CString::new(
+            "(Ljava/lang/String;FFZZIZLjava/lang/String;I)Lnet/redoxmc/bridge/block/GenericRedoxEntityBlock;",
+        )
+        .unwrap();
+        let register_mid = ((**env).GetStaticMethodID)(
+            env,
+            entity_block_class,
+            register_method_name.as_ptr(),
+            register_sig.as_ptr(),
+        );
+        if register_mid.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            return Err("Failed to find GenericRedoxEntityBlock.registerWithEntity method".into());
+        }
+
+        let c_block_id = CString::new(block.id.as_str()).unwrap();
+        let j_block_id = ((**env).NewStringUTF)(env, c_block_id.as_ptr());
+        let j_destroy_time = block.destroy_time as jni::jfloat;
+        let j_explosion_resistance = block.explosion_resistance as jni::jfloat;
+        let j_requires_tool = if block.requires_tool {
+            jni::JNI_TRUE
+        } else {
+            jni::JNI_FALSE
+        };
+        let j_no_collision = if block.no_collision {
+            jni::JNI_TRUE
+        } else {
+            jni::JNI_FALSE
+        };
+        let j_flags = block.behavior_flags as jni::jint;
+        let j_register_item = if block.has_item {
+            jni::JNI_TRUE
+        } else {
+            jni::JNI_FALSE
+        };
+        let c_be_id = CString::new(be.id.as_str()).unwrap();
+        let j_be_id = ((**env).NewStringUTF)(env, c_be_id.as_ptr());
+        let j_be_flags = be.behavior_flags as jni::jint;
+
+        let res = ((**env).CallStaticObjectMethod)(
+            env,
+            entity_block_class,
+            register_mid,
+            j_block_id,
+            j_destroy_time as std::os::raw::c_double,
+            j_explosion_resistance as std::os::raw::c_double,
+            j_requires_tool as std::os::raw::c_uint,
+            j_no_collision as std::os::raw::c_uint,
+            j_flags,
+            j_register_item as std::os::raw::c_uint,
+            j_be_id,
+            j_be_flags,
+        );
+
+        if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE || res.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionDescribe)(env);
+                ((**env).ExceptionClear)(env);
+            }
+            return Err(format!(
+                "Exception during GenericRedoxEntityBlock.registerWithEntity for '{}'",
+                block.id
+            ));
+        }
+
+        println!(
+            "[redox-mc-loader] Registered custom entity block into BuiltInRegistries.BLOCK: '{}' with entity '{}' (destroy_time={}, resistance={}, requires_tool={}, flags={})",
+            block.id, be.id, block.destroy_time, block.explosion_resistance, block.requires_tool, block.behavior_flags
+        );
+        return Ok(());
+    }
+
     let block_class_name = CString::new("net.redoxmc.bridge.block.GenericRedoxBlock").unwrap();
+
     let j_name = ((**env).NewStringUTF)(env, block_class_name.as_ptr());
     let block_class =
         ((**env).CallObjectMethod)(env, loader, load_class_mid, j_name) as jni::jclass;

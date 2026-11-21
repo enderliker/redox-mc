@@ -140,6 +140,7 @@ fn test_block_registry_hash_determinism_and_sensitivity() {
         no_collision: false,
         behavior_flags: BLOCK_FLAG_HAS_USE_WITHOUT_ITEM,
         has_item: true,
+        block_entity: None,
     };
 
     let items = vec![RegisteredItemEntry {

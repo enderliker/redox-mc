@@ -365,6 +365,228 @@ pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBlockDestroy
     }));
 }
 
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onBlockEntityTick(String blockEntityId, int x, int y, int z)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string reference.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBlockEntityTick(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    id_str: jni::jstring,
+    x: jni::jint,
+    y: jni::jint,
+    z: jni::jint,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if env.is_null() || id_str.is_null() {
+            return;
+        }
+        if ((**env).PushLocalFrame)(env, 16) != jni::JNI_OK {
+            return;
+        }
+        let chars = ((**env).GetStringUTFChars)(env, id_str, std::ptr::null_mut());
+        if !chars.is_null() {
+            let id = CStr::from_ptr(chars).to_string_lossy();
+            crate::events::dispatch_block_entity_tick(&id, x, y, z);
+            ((**env).ReleaseStringUTFChars)(env, id_str, chars);
+        } else if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+            ((**env).ExceptionClear)(env);
+        }
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+    }));
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onBlockEntitySave(String blockEntityId, int x, int y, int z) -> String
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string reference.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBlockEntitySave(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    id_str: jni::jstring,
+    x: jni::jint,
+    y: jni::jint,
+    z: jni::jint,
+) -> jni::jstring {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if env.is_null() || id_str.is_null() {
+            return std::ptr::null_mut();
+        }
+        if ((**env).PushLocalFrame)(env, 16) != jni::JNI_OK {
+            return std::ptr::null_mut();
+        }
+        let chars = ((**env).GetStringUTFChars)(env, id_str, std::ptr::null_mut());
+        if chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+            return std::ptr::null_mut();
+        }
+        let id = CStr::from_ptr(chars).to_string_lossy();
+        let saved_data = crate::events::dispatch_block_entity_save(&id, x, y, z);
+        ((**env).ReleaseStringUTFChars)(env, id_str, chars);
+
+        let j_res = match saved_data {
+            Some(data) => super::strings::string_to_jstring(env, data),
+            None => std::ptr::null_mut(),
+        };
+        ((**env).PopLocalFrame)(env, j_res as jni::jobject) as jni::jstring
+    }));
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onBlockEntityLoad(String blockEntityId, int x, int y, int z, String data)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer and valid Java string references.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onBlockEntityLoad(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    id_str: jni::jstring,
+    x: jni::jint,
+    y: jni::jint,
+    z: jni::jint,
+    data_str: jni::jstring,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if env.is_null() || id_str.is_null() {
+            return;
+        }
+        if ((**env).PushLocalFrame)(env, 16) != jni::JNI_OK {
+            return;
+        }
+        let id_chars = ((**env).GetStringUTFChars)(env, id_str, std::ptr::null_mut());
+        if id_chars.is_null() {
+            if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                ((**env).ExceptionClear)(env);
+            }
+            ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+            return;
+        }
+        let id = CStr::from_ptr(id_chars).to_string_lossy();
+
+        let data = if !data_str.is_null() {
+            let data_chars = ((**env).GetStringUTFChars)(env, data_str, std::ptr::null_mut());
+            if !data_chars.is_null() {
+                let d = CStr::from_ptr(data_chars).to_string_lossy().into_owned();
+                ((**env).ReleaseStringUTFChars)(env, data_str, data_chars);
+                d
+            } else {
+                if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                    ((**env).ExceptionClear)(env);
+                }
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        crate::events::dispatch_block_entity_load(&id, x, y, z, &data);
+        ((**env).ReleaseStringUTFChars)(env, id_str, id_chars);
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+    }));
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onMenuOpen(String menuId, int containerId, String playerName)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onMenuOpen(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    menu_id_str: jni::jstring,
+    container_id: jni::jint,
+    player_name_str: jni::jstring,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if env.is_null() {
+            return;
+        }
+        if ((**env).PushLocalFrame)(env, 16) != jni::JNI_OK {
+            return;
+        }
+        let menu_id = super::strings::jstring_to_string(env, menu_id_str);
+        let player_name = super::strings::jstring_to_string(env, player_name_str);
+        clear_pending_exception(env);
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+
+        crate::events::dispatch_menu_open(&menu_id, container_id, &player_name);
+    }));
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onMenuSlotClick(String menuId, int containerId, int slotIndex, int button, int clickType, String playerName) -> int
+/// Returns 0 for Allow, 1 for Deny.
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onMenuSlotClick(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    menu_id_str: jni::jstring,
+    container_id: jni::jint,
+    slot_index: jni::jint,
+    button: jni::jint,
+    click_type: jni::jint,
+    player_name_str: jni::jstring,
+) -> jni::jint {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if env.is_null() {
+            return 0; // Allow
+        }
+        if ((**env).PushLocalFrame)(env, 16) != jni::JNI_OK {
+            return 0; // Allow
+        }
+        let menu_id = super::strings::jstring_to_string(env, menu_id_str);
+        let player_name = super::strings::jstring_to_string(env, player_name_str);
+        clear_pending_exception(env);
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+
+        crate::events::dispatch_menu_slot_click(
+            &menu_id,
+            container_id,
+            slot_index,
+            button,
+            click_type,
+            &player_name,
+        )
+    }));
+    result.unwrap_or(0)
+}
+
+/// JNI native: net.redoxmc.bridge.RedoxBridge.onMenuClose(String menuId, int containerId, String playerName)
+///
+/// # Safety
+/// Must be invoked by the JVM with a valid JNI environment pointer.
+#[no_mangle]
+pub unsafe extern "system" fn Java_net_redoxmc_bridge_RedoxBridge_onMenuClose(
+    env: *mut jni::JNIEnv,
+    _class: jni::jclass,
+    menu_id_str: jni::jstring,
+    container_id: jni::jint,
+    player_name_str: jni::jstring,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if env.is_null() {
+            return;
+        }
+        if ((**env).PushLocalFrame)(env, 16) != jni::JNI_OK {
+            return;
+        }
+        let menu_id = super::strings::jstring_to_string(env, menu_id_str);
+        let player_name = super::strings::jstring_to_string(env, player_name_str);
+        clear_pending_exception(env);
+        ((**env).PopLocalFrame)(env, std::ptr::null_mut());
+
+        crate::events::dispatch_menu_close(&menu_id, container_id, &player_name);
+    }));
+}
+
 /// JNI native: net.redoxmc.bridge.RedoxBridge.isClassLoaderCaptured()
 ///
 /// # Safety

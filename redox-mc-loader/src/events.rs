@@ -51,3 +51,48 @@ pub fn dispatch_block_step_on(block_id: &str, x: i32, y: i32, z: i32) {
 pub fn dispatch_block_destroy(block_id: &str, x: i32, y: i32, z: i32) {
     crate::mod_loader::on_block_destroy(block_id, x, y, z);
 }
+
+/// Dispatches a block entity tick event.
+pub fn dispatch_block_entity_tick(id: &str, x: i32, y: i32, z: i32) {
+    crate::mod_loader::on_block_entity_tick(id, x, y, z);
+}
+
+/// Dispatches a block entity save event.
+pub fn dispatch_block_entity_save(id: &str, x: i32, y: i32, z: i32) -> Option<String> {
+    crate::mod_loader::on_block_entity_save(id, x, y, z)
+}
+
+/// Dispatches a block entity load event.
+pub fn dispatch_block_entity_load(id: &str, x: i32, y: i32, z: i32, data: &str) {
+    crate::mod_loader::on_block_entity_load(id, x, y, z, data);
+}
+
+/// Dispatches a container menu open event.
+pub fn dispatch_menu_open(menu_id: &str, container_id: i32, player_name: &str) {
+    crate::mod_loader::on_menu_open(menu_id, container_id, player_name);
+}
+
+/// Dispatches a container menu slot click event.
+/// Returns 0 for Allow, 1 for Deny.
+pub fn dispatch_menu_slot_click(
+    menu_id: &str,
+    container_id: i32,
+    slot_index: i32,
+    button: i32,
+    click_type: i32,
+    player_name: &str,
+) -> i32 {
+    crate::mod_loader::on_menu_slot_click(
+        menu_id,
+        container_id,
+        slot_index,
+        button,
+        click_type,
+        player_name,
+    )
+}
+
+/// Dispatches a container menu close event.
+pub fn dispatch_menu_close(menu_id: &str, container_id: i32, player_name: &str) {
+    crate::mod_loader::on_menu_close(menu_id, container_id, player_name);
+}

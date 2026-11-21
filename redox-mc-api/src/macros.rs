@@ -81,6 +81,13 @@ impl PanicFallback for FfiBuffer {
     }
 }
 
+impl PanicFallback for redox_mc_abi::types::FfiMenuAction {
+    #[inline]
+    fn panic_fallback() -> Self {
+        redox_mc_abi::types::FfiMenuAction::Deny
+    }
+}
+
 impl<T> PanicFallback for *const T {
     #[inline]
     fn panic_fallback() -> Self {

@@ -1,7 +1,8 @@
 //! VTables and Context structures for dynamic loader-mod communication.
 
 use crate::types::{
-    AbiVersion, FfiBuffer, FfiLogLevel, FfiModSide, FfiResult, FfiStatus, FfiStr, FfiString,
+    AbiVersion, FfiBuffer, FfiLogLevel, FfiMenuAction, FfiMenuClickEvent, FfiModSide, FfiResult,
+    FfiStatus, FfiStr, FfiString,
 };
 
 /// Context provided by the Redox loader to each mod during initialization.
@@ -51,6 +52,19 @@ pub struct LoaderVTable {
     pub free_buffer: unsafe extern "C" fn(b: FfiBuffer),
 }
 
+pub type BlockEntityTickFn = unsafe extern "C" fn(id: FfiStr, x: i32, y: i32, z: i32) -> FfiStatus;
+pub type BlockEntitySaveFn =
+    unsafe extern "C" fn(id: FfiStr, x: i32, y: i32, z: i32, out_buf: *mut FfiBuffer) -> FfiStatus;
+pub type BlockEntityLoadFn =
+    unsafe extern "C" fn(id: FfiStr, x: i32, y: i32, z: i32, data: FfiStr) -> FfiStatus;
+
+pub type MenuOpenFn =
+    unsafe extern "C" fn(menu_id: FfiStr, container_id: i32, player_name: FfiStr) -> FfiStatus;
+pub type MenuSlotClickFn =
+    unsafe extern "C" fn(event: *const FfiMenuClickEvent) -> FfiResult<FfiMenuAction>;
+pub type MenuCloseFn =
+    unsafe extern "C" fn(menu_id: FfiStr, container_id: i32, player_name: FfiStr) -> FfiStatus;
+
 /// Function table returned by a mod to the Redox loader.
 #[repr(C)]
 pub struct ModVTable {
@@ -68,11 +82,66 @@ pub struct ModVTable {
     pub on_server_chat:
         Option<unsafe extern "C" fn(player_name: FfiStr, message: FfiStr) -> FfiResult<bool>>,
 
+    /// Called every tick for registered block entities with `BLOCK_ENTITY_FLAG_HAS_TICK`.
+    pub on_block_entity_tick: Option<BlockEntityTickFn>,
+
+    /// Called when saving persistent block entity state with `BLOCK_ENTITY_FLAG_HAS_PERSISTENCE`.
+    pub on_block_entity_save: Option<BlockEntitySaveFn>,
+
+    /// Called when loading persistent block entity state with `BLOCK_ENTITY_FLAG_HAS_PERSISTENCE`.
+    pub on_block_entity_load: Option<BlockEntityLoadFn>,
+
+    /// Called when a container menu is opened by a player.
+    pub on_menu_open: Option<MenuOpenFn>,
+
+    /// Called when a slot is clicked in a container menu.
+    pub on_menu_slot_click: Option<MenuSlotClickFn>,
+
+    /// Called when a container menu is closed.
+    pub on_menu_close: Option<MenuCloseFn>,
+
     /// Frees an `FfiString` that was allocated by this mod.
     pub free_string: unsafe extern "C" fn(s: FfiString),
 
     /// Frees an `FfiBuffer` that was allocated by this mod.
     pub free_buffer: unsafe extern "C" fn(b: FfiBuffer),
+}
+
+/// Default no-op wrapper for mod `on_menu_open`.
+///
+/// # Safety
+///
+/// `_menu_id` and `_player_name` must represent valid FFI string references if accessed.
+pub unsafe extern "C" fn redox_mod_on_menu_open(
+    _menu_id: FfiStr,
+    _container_id: i32,
+    _player_name: FfiStr,
+) -> FfiStatus {
+    FfiStatus::Success
+}
+
+/// Default wrapper for mod `on_menu_slot_click`, allowing the action.
+///
+/// # Safety
+///
+/// `_event` must point to a valid, initialized `FfiMenuClickEvent` if dereferenced.
+pub unsafe extern "C" fn redox_mod_on_menu_slot_click(
+    _event: *const FfiMenuClickEvent,
+) -> FfiResult<FfiMenuAction> {
+    FfiResult::ok(FfiMenuAction::Allow)
+}
+
+/// Default no-op wrapper for mod `on_menu_close`.
+///
+/// # Safety
+///
+/// `_menu_id` and `_player_name` must represent valid FFI string references if accessed.
+pub unsafe extern "C" fn redox_mod_on_menu_close(
+    _menu_id: FfiStr,
+    _container_id: i32,
+    _player_name: FfiStr,
+) -> FfiStatus {
+    FfiStatus::Success
 }
 
 /// Mod initialization function signature exported by mod binaries.

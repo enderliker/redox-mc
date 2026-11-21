@@ -161,8 +161,8 @@ echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom item: 'testmod:ruby'"
 echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom block: 'testmod:ruby_block'"
 echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom block into BuiltInRegistries.BLOCK: 'testmod:ruby_block'"
 echo "${MOD_SERVER_OUTPUT}" | grep "Registered custom item into BuiltInRegistries.ITEM: 'testmod:ruby'"
-echo "${MOD_SERVER_OUTPUT}" | grep "Content registration complete: 1 custom item(s), 1 custom block(s) registered. Registry Content Hash:"
-echo "${MOD_SERVER_OUTPUT}" | grep "BuiltInRegistries status: sealed (frozen=true, item_count=1660)."
+echo "${MOD_SERVER_OUTPUT}" | grep "Content registration complete: 1 custom item(s), 2 custom block(s), 1 block entity type(s), 1 menu type(s) registered. Registry Content Hash:"
+echo "${MOD_SERVER_OUTPUT}" | grep "BuiltInRegistries status: sealed (frozen=true, item_count=1661)."
 echo "[TEST] PASS: Vertical slice fully operational! Native Rust mod discovered, loaded, item registered into BuiltInRegistries, and executed inside Minecraft."
 
 echo ""
@@ -240,6 +240,20 @@ CARGO_REDOX_MC_BIN="${CARGO_REDOX_MC_BIN}" \
     AGENT_LIB="${AGENT_PATH_NATIVE}" \
     BUNDLER_JAR="${BUNDLER_PATH_NATIVE}" \
     "${PYTHON_CMD}" "${ROOT_DIR}/tests/test_cargo_redox_mc.py"
+
+echo ""
+echo "=== Running Test 14: Task 8.1 Block Entity Ticker & State Persistence Test ==="
+AGENT_LIB="${AGENT_PATH_NATIVE}" \
+    MOD_LIB="${MOD_PATH_NATIVE}" \
+    BUNDLER_JAR="${BUNDLER_PATH_NATIVE}" \
+    "${PYTHON_CMD}" "${ROOT_DIR}/tests/test_block_entity_headless.py"
+
+echo ""
+echo "=== Running Test 15: Task 8.2 Container Menus & Screens Headless Validation ==="
+AGENT_LIB="${AGENT_PATH_NATIVE}" \
+    MOD_LIB="${MOD_PATH_NATIVE}" \
+    BUNDLER_JAR="${BUNDLER_PATH_NATIVE}" \
+    "${PYTHON_CMD}" "${ROOT_DIR}/tests/test_container_menu_headless.py"
 
 echo ""
 echo ">>> ALL INTEGRATION TESTS PASSED! <<<"

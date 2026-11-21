@@ -21,12 +21,15 @@ pub use memory::{
     redox_mod_free_buffer, redox_mod_free_string,
 };
 pub use types::{
-    AbiVersion, FfiBuffer, FfiLogLevel, FfiModSide, FfiResult, FfiSlice, FfiSliceMut, FfiStatus,
-    FfiStr, FfiString, NetworkDispatchFn, NetworkOutboundVisitor, NetworkOutboxDrainFn,
-    NETWORK_SIDE_CLIENT, NETWORK_SIDE_SERVER, NETWORK_TARGET_BROADCAST, NETWORK_TARGET_PLAYER,
-    NETWORK_TARGET_SERVER,
+    AbiVersion, FfiBuffer, FfiLogLevel, FfiMenuAction, FfiMenuClickEvent, FfiMenuClickType,
+    FfiModSide, FfiResult, FfiSlice, FfiSliceMut, FfiStatus, FfiStr, FfiString, NetworkDispatchFn,
+    NetworkOutboundVisitor, NetworkOutboxDrainFn, NETWORK_SIDE_CLIENT, NETWORK_SIDE_SERVER,
+    NETWORK_TARGET_BROADCAST, NETWORK_TARGET_PLAYER, NETWORK_TARGET_SERVER,
 };
-pub use vtable::{LoaderContext, LoaderVTable, ModInitFn, ModVTable};
+pub use vtable::{
+    redox_mod_on_menu_close, redox_mod_on_menu_open, redox_mod_on_menu_slot_click, LoaderContext,
+    LoaderVTable, MenuCloseFn, MenuOpenFn, MenuSlotClickFn, ModInitFn, ModVTable,
+};
 
 /// Canonical ABI version of this release.
 ///

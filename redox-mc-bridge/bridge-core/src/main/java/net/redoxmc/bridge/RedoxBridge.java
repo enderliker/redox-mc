@@ -159,6 +159,39 @@ public final class RedoxBridge {
     public static native void onBlockDestroy(String blockId, int x, int y, int z);
 
     /**
+     * Hook called every tick for registered block entities with FLAG_HAS_TICK.
+     */
+    public static native void onBlockEntityTick(String blockEntityId, int x, int y, int z);
+
+    /**
+     * Hook called when saving persistent block entity state with FLAG_HAS_PERSISTENCE.
+     * Returns serialized data string to store in "redox_data", or null/empty if none.
+     */
+    public static native String onBlockEntitySave(String blockEntityId, int x, int y, int z);
+
+    /**
+     * Hook called when loading persistent block entity state with FLAG_HAS_PERSISTENCE.
+     */
+    public static native void onBlockEntityLoad(String blockEntityId, int x, int y, int z, String data);
+
+    /**
+     * Hook called when a player opens a container menu.
+     */
+    public static native void onMenuOpen(String menuId, int containerId, String playerName);
+
+    /**
+     * Hook called when a player clicks a slot inside a container menu.
+     * Returns 0 for Allow, 1 for Deny.
+     */
+    public static native int onMenuSlotClick(String menuId, int containerId, int slotIndex, int button, int clickType, String playerName);
+
+    /**
+     * Hook called when a container menu is closed.
+     */
+    public static native void onMenuClose(String menuId, int containerId, String playerName);
+
+
+    /**
      * Retrieves a virtual resource from the native loader.
      *
      * @param type "assets" (CLIENT_RESOURCES) or "data" (SERVER_DATA)

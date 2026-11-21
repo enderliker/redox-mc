@@ -1,0 +1,49 @@
+[package]
+authors.workspace = true
+categories.workspace = true
+description = "A library for reading, writing and verifying Java classfiles."
+edition.workspace = true
+keywords = ["java", "jvm", "classfile", "bytecode"]
+license.workspace = true
+name = "ristretto_classfile"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ahash = { workspace = true }
+bitflags = { workspace = true }
+byteorder = { workspace = true }
+getrandom = { workspace = true }
+hashbrown = { workspace = true }
+indexmap = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+criterion = { workspace = true }
+flate2 = { workspace = true }
+indoc = { workspace = true }
+tar = { workspace = true }
+tokio = { workspace = true }
+zip = { workspace = true, features = ["deflate"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+reqwest = { workspace = true, features = ["rustls"] }
+
+[package.metadata.cargo-machete]
+ignored = [
+    # enables the wasm_js backend for ahash's transitive getrandom dependency
+    "getrandom",
+]
+
+[[bench]]
+harness = false
+name = "class_file"
+
+[[bench]]
+harness = false
+name = "mutf8"

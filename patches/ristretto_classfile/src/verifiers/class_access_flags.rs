@@ -1,0 +1,148 @@
+use crate::class_access_flags::ClassAccessFlags;
+use crate::class_file::ClassFile;
+use crate::verifiers::error::Result;
+use crate::verifiers::error::VerifyError::InvalidClassAccessFlags;
+
+/// Verify the `ClassFile` `ClassAccessFlags`.
+///
+/// # Errors
+/// Returns `InvalidClassAccessFlags` if the access flags are invalid.
+pub(crate) fn verify(class_file: &ClassFile<'_>) -> Result<()> {
+    let access_flags = class_file.access_flags;
+
+    if access_flags.contains(ClassAccessFlags::ANNOTATION)
+        && !access_flags.contains(ClassAccessFlags::INTERFACE)
+    {
+        return Err(InvalidClassAccessFlags(access_flags.bits()));
+    }
+
+    if access_flags.contains(ClassAccessFlags::INTERFACE) {
+        if !access_flags.contains(ClassAccessFlags::ABSTRACT) {
+            let full_class_name = class_file.class_name()?;
+            let full_class_str = full_class_name.to_str_lossy();
+            let class_name = full_class_str.split('/').next_back().unwrap_or_default();
+            if class_name != "package-info" {
+                return Err(InvalidClassAccessFlags(access_flags.bits()));
+            }
+        }
+        if access_flags.contains(ClassAccessFlags::FINAL)
+            || access_flags.contains(ClassAccessFlags::SUPER)
+            || access_flags.contains(ClassAccessFlags::ENUM)
+            || access_flags.contains(ClassAccessFlags::MODULE)
+        {
+            return Err(InvalidClassAccessFlags(access_flags.bits()));
+        }
+    } else if access_flags.contains(ClassAccessFlags::FINAL)
+        && access_flags.contains(ClassAccessFlags::ABSTRACT)
+    {
+        return Err(InvalidClassAccessFlags(access_flags.bits()));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::class_file::ClassFile;
+    use crate::constant_pool::ConstantPool;
+
+    #[test]
+    fn test_verify_success() -> Result<()> {
+        let class_bytes = include_bytes!("../../../classes/Simple.class");
+        let class_file = ClassFile::from_bytes(class_bytes.as_slice())?;
+
+        assert_eq!(Ok(()), verify(&class_file));
+        Ok(())
+    }
+
+    fn test_verify_error(access_flags: ClassAccessFlags) -> Result<()> {
+        let mut constant_pool = ConstantPool::default();
+        let this_class = constant_pool.add_class("Foo")?;
+        let class_file = ClassFile {
+            constant_pool,
+            access_flags,
+            this_class,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            Err(InvalidClassAccessFlags(access_flags.bits())),
+            verify(&class_file)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_verify_annotation_not_interface_error() -> Result<()> {
+        test_verify_error(ClassAccessFlags::ANNOTATION)
+    }
+
+    #[test]
+    fn test_verify_interface_not_abstract_error() -> Result<()> {
+        test_verify_error(ClassAccessFlags::INTERFACE)
+    }
+
+    #[test]
+    fn test_verify_interface_is_final_error() -> Result<()> {
+        test_verify_error(
+            ClassAccessFlags::INTERFACE | ClassAccessFlags::ABSTRACT | ClassAccessFlags::FINAL,
+        )
+    }
+
+    #[test]
+    fn test_verify_interface_is_super_error() -> Result<()> {
+        test_verify_error(
+            ClassAccessFlags::INTERFACE | ClassAccessFlags::ABSTRACT | ClassAccessFlags::SUPER,
+        )
+    }
+
+    #[test]
+    fn test_verify_interface_is_enum_error() -> Result<()> {
+        test_verify_error(
+            ClassAccessFlags::INTERFACE | ClassAccessFlags::ABSTRACT | ClassAccessFlags::ENUM,
+        )
+    }
+
+    #[test]
+    fn test_verify_interface_is_module_error() -> Result<()> {
+        test_verify_error(
+            ClassAccessFlags::INTERFACE | ClassAccessFlags::ABSTRACT | ClassAccessFlags::MODULE,
+        )
+    }
+
+    #[test]
+    fn test_verify_not_abstract_and_finale_error() -> Result<()> {
+        test_verify_error(ClassAccessFlags::ABSTRACT | ClassAccessFlags::FINAL)
+    }
+
+    #[test]
+    fn test_verify_valid_interface() -> Result<()> {
+        let mut constant_pool = ConstantPool::default();
+        let this_class = constant_pool.add_class("MyInterface")?;
+        let class_file = ClassFile {
+            constant_pool,
+            access_flags: ClassAccessFlags::INTERFACE | ClassAccessFlags::ABSTRACT,
+            this_class,
+            ..Default::default()
+        };
+
+        assert_eq!(Ok(()), verify(&class_file));
+        Ok(())
+    }
+
+    #[test]
+    fn test_verify_package_info_interface_without_abstract() -> Result<()> {
+        let mut constant_pool = ConstantPool::default();
+        let this_class = constant_pool.add_class("com/example/package-info")?;
+        let class_file = ClassFile {
+            constant_pool,
+            access_flags: ClassAccessFlags::INTERFACE,
+            this_class,
+            ..Default::default()
+        };
+
+        assert_eq!(Ok(()), verify(&class_file));
+        Ok(())
+    }
+}

@@ -493,3 +493,62 @@ fn test_transform_real_minecraft_commands_perform_prefixed_command() {
     assert!(javap_stdout.contains("ifeq"));
     println!("[TEST] javap verification on transformed Commands.class passed!");
 }
+
+#[test]
+fn test_transform_real_minecraft_client_class() {
+    let jar_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../versions/26.3/client.jar");
+    if !jar_path.exists() {
+        println!("SKIPPED: client.jar not found at {:?}", jar_path);
+        return;
+    }
+
+    let out = Command::new("unzip")
+        .args([
+            "-p",
+            jar_path.to_str().unwrap(),
+            "net/minecraft/client/Minecraft.class",
+        ])
+        .output()
+        .expect("unzip command failed");
+    let client_bytes = out.stdout;
+
+    let transformed = transform_class(&client_bytes, redox_mc_loader::all_hook_targets())
+        .expect("Transformation must succeed")
+        .expect("Minecraft must match tick hook");
+
+    let temp_dir = std::env::temp_dir().join("redox_test_client");
+    fs::create_dir_all(&temp_dir).unwrap();
+    let temp_class = temp_dir.join("Minecraft.class");
+    fs::write(&temp_class, &transformed).unwrap();
+
+    let javap_output = Command::new("javap")
+        .args(["-v", "-p", temp_class.to_str().unwrap()])
+        .output()
+        .expect("Failed to execute javap");
+
+    assert!(
+        javap_output.status.success(),
+        "javap failed with error: {}",
+        String::from_utf8_lossy(&javap_output.stderr)
+    );
+
+    let javap_stdout = String::from_utf8_lossy(&javap_output.stdout);
+    assert!(javap_stdout.contains("tick$original"));
+    assert!(javap_stdout.contains("ModNetworkBridge.onClientTick"));
+
+    // Check handleKeybinds in javap output for the frame at @0
+    let start = javap_stdout
+        .find("void handleKeybinds()")
+        .expect("handleKeybinds must exist");
+    let smt_idx = javap_stdout[start..]
+        .find("StackMapTable:")
+        .expect("StackMapTable must exist");
+    let smt_snippet = &javap_stdout[start + smt_idx..start + smt_idx + 300];
+    println!("handleKeybinds StackMapTable:\n{}", smt_snippet);
+    assert!(
+        smt_snippet.contains("frame_type = 0 /* same */"),
+        "handleKeybinds MUST contain frame_type = 0 for branch target 0! Found:\n{}",
+        smt_snippet
+    );
+}

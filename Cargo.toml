@@ -14,4 +14,8 @@ members = [
 ]
 resolver = "2"
 
+[patch.crates-io]
+ristretto_classfile = { path = "patches/ristretto_classfile" }
+
+
 

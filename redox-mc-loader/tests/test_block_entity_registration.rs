@@ -77,11 +77,11 @@ fn test_block_entity_flag_variation() {
 fn test_attached_block_entity_affects_block_hash() {
     let b_plain = RegisteredBlockEntry::new("testmod:ruby_block");
     let mut b_with_be = RegisteredBlockEntry::new("testmod:ruby_block");
-    b_with_be.block_entity = Some(RegisteredBlockEntityEntry {
-        id: "testmod:ruby_be".into(),
-        valid_blocks: vec!["testmod:ruby_block".into()],
-        behavior_flags: 3,
-    });
+    b_with_be.block_entity = Some(RegisteredBlockEntityEntry::new(
+        "testmod:ruby_be",
+        vec!["testmod:ruby_block".into()],
+        3,
+    ));
 
     let mut h1 = RegistryHashBuilder::new();
     h1.add_block(b_plain);
@@ -102,11 +102,8 @@ fn test_empty_registry_content_hash() {
 
 #[test]
 fn test_register_block_entity_null_env() {
-    let entry = RegisteredBlockEntityEntry {
-        id: "testmod:demo_be".into(),
-        valid_blocks: vec!["testmod:demo_block".into()],
-        behavior_flags: 1,
-    };
+    let entry =
+        RegisteredBlockEntityEntry::new("testmod:demo_be", vec!["testmod:demo_block".into()], 1);
     let res = unsafe { register_block_entity_in_game(std::ptr::null_mut(), &entry) };
     assert!(res.is_err());
     assert_eq!(res.unwrap_err(), "JNIEnv pointer is null");

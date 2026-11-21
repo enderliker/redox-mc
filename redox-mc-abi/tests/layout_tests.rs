@@ -276,11 +276,15 @@ fn test_mock_loader_and_mod_handshake() {
 
 #[test]
 fn test_block_entity_abi_layout_and_flags() {
-    use redox_mc_abi::types::{BLOCK_ENTITY_FLAG_HAS_PERSISTENCE, BLOCK_ENTITY_FLAG_HAS_TICK};
+    use redox_mc_abi::types::{
+        BLOCK_ENTITY_FLAG_HAS_CONTAINER, BLOCK_ENTITY_FLAG_HAS_PERSISTENCE,
+        BLOCK_ENTITY_FLAG_HAS_TICK,
+    };
     use redox_mc_abi::vtable::ModVTable;
 
     assert_eq!(BLOCK_ENTITY_FLAG_HAS_TICK, 1 << 0);
     assert_eq!(BLOCK_ENTITY_FLAG_HAS_PERSISTENCE, 1 << 1);
+    assert_eq!(BLOCK_ENTITY_FLAG_HAS_CONTAINER, 1 << 2);
 
     // Verify ModVTable alignment and function pointer presence
     assert!(std::mem::size_of::<ModVTable>() >= 48);

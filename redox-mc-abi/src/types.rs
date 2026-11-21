@@ -56,6 +56,8 @@ pub const BLOCK_FLAG_HAS_DESTROY: u32 = 1 << 2;
 pub const BLOCK_ENTITY_FLAG_HAS_TICK: u32 = 1 << 0;
 /// Block entity behavior flag: custom persistent state serialization (`saveAdditional`/`loadAdditional`).
 pub const BLOCK_ENTITY_FLAG_HAS_PERSISTENCE: u32 = 1 << 1;
+/// Block entity behavior flag: persistent item container with menu provider support.
+pub const BLOCK_ENTITY_FLAG_HAS_CONTAINER: u32 = 1 << 2;
 
 /// Standard status code returned by FFI calls.
 #[repr(i32)]

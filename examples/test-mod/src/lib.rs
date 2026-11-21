@@ -309,6 +309,20 @@ pub fn redox_mod_on_register_content() -> FfiStatus {
     redox_mc_api::gui::register_menu(counter_menu);
     println!("[test-mod] Registered custom menu: 'testmod:counter_menu' with 9 slots");
 
+    // Register persistent container storage block: testmod:storage_crate
+    let storage_crate = redox_mc_api::block::BlockDefinition::new("testmod:storage_crate")
+        .strength(2.0)
+        .cube_model("testmod:block/ruby_block")
+        .with_container_block_entity("testmod:storage_crate_be", 9, "testmod:storage_crate_menu");
+    redox_mc_api::block::register_block(storage_crate);
+    println!("[test-mod] Registered container block: 'testmod:storage_crate' with 9-slot persistent container");
+
+    let storage_menu = redox_mc_api::gui::MenuDefinition::new("testmod:storage_crate_menu")
+        .slots(9)
+        .title("Storage Crate");
+    redox_mc_api::gui::register_menu(storage_menu);
+    println!("[test-mod] Registered custom menu: 'testmod:storage_crate_menu' with 9 slots");
+
     redox_mc_api::gui::on_open(|menu_id, container_id, player_name| {
         println!(
             "[test-mod] Menu opened: id='{}', container_id={}, player='{}'",

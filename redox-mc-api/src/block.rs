@@ -157,6 +157,22 @@ impl BlockDefinition {
         self
     }
 
+    /// Attaches a container block entity with custom slot count and menu identifier.
+    pub fn with_container_block_entity(
+        mut self,
+        be_id: impl Into<String>,
+        slots: u32,
+        menu_id: impl Into<String>,
+    ) -> Self {
+        let be_id_str = be_id.into();
+        let menu_id_str = menu_id.into();
+        self.block_entity = Some(
+            crate::block_entity::BlockEntityDefinition::new(be_id_str)
+                .with_container(slots, menu_id_str),
+        );
+        self
+    }
+
     /// Generates in-memory virtual resources for this block if a cube model texture is configured.
     pub fn generate_virtual_resources(&self) -> Vec<crate::resource::VirtualResource> {
         if let Some(texture) = &self.cube_model_texture {
@@ -301,6 +317,59 @@ pub unsafe extern "C" fn redox_mod_get_block_entity_info_at(
             *out_has_entity = false;
             *out_id = redox_mc_abi::types::FfiStr::EMPTY;
             *out_flags = 0;
+        }
+
+        redox_mc_abi::types::FfiStatus::Success
+    }));
+
+    result.unwrap_or(redox_mc_abi::types::FfiStatus::Panic)
+}
+
+/// C-ABI exported symbol allowing the loader to query container info for the block entity at `index`.
+///
+/// # Safety
+/// Output pointers must point to valid, writable memory.
+#[no_mangle]
+pub unsafe extern "C" fn redox_mod_get_block_entity_container_info_at(
+    index: usize,
+    out_has_container: *mut bool,
+    out_slots: *mut u32,
+    out_menu_id: *mut redox_mc_abi::types::FfiStr,
+    out_title: *mut redox_mc_abi::types::FfiStr,
+) -> redox_mc_abi::types::FfiStatus {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if out_has_container.is_null()
+            || out_slots.is_null()
+            || out_menu_id.is_null()
+            || out_title.is_null()
+        {
+            return redox_mc_abi::types::FfiStatus::NullPointer;
+        }
+
+        let blocks = REGISTERED_BLOCKS.lock().unwrap_or_else(|e| e.into_inner());
+        if index >= blocks.len() {
+            return redox_mc_abi::types::FfiStatus::NotFound;
+        }
+
+        let block = &blocks[index];
+        if let Some(be) = &block.block_entity {
+            *out_has_container = be.has_container;
+            *out_slots = be.slot_count;
+            if let Some(m) = &be.menu_id {
+                *out_menu_id = redox_mc_abi::types::FfiStr::from_str(m.as_str());
+            } else {
+                *out_menu_id = redox_mc_abi::types::FfiStr::EMPTY;
+            }
+            if let Some(t) = &be.title {
+                *out_title = redox_mc_abi::types::FfiStr::from_str(t.as_str());
+            } else {
+                *out_title = redox_mc_abi::types::FfiStr::EMPTY;
+            }
+        } else {
+            *out_has_container = false;
+            *out_slots = 0;
+            *out_menu_id = redox_mc_abi::types::FfiStr::EMPTY;
+            *out_title = redox_mc_abi::types::FfiStr::EMPTY;
         }
 
         redox_mc_abi::types::FfiStatus::Success

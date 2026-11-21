@@ -67,22 +67,42 @@ unsafe fn register_block_in_game_inner(
         }
 
         let register_method_name = CString::new("registerWithEntity").unwrap();
-        let register_sig = CString::new(
-            "(Ljava/lang/String;FFZZIZLjava/lang/String;I)Lnet/redoxmc/bridge/block/GenericRedoxEntityBlock;",
+        let register_sig_12 = CString::new(
+            "(Ljava/lang/String;FFZZIZLjava/lang/String;IILjava/lang/String;Ljava/lang/String;)Lnet/redoxmc/bridge/block/GenericRedoxEntityBlock;",
         )
         .unwrap();
-        let register_mid = ((**env).GetStaticMethodID)(
+        let register_mid_12 = ((**env).GetStaticMethodID)(
             env,
             entity_block_class,
             register_method_name.as_ptr(),
-            register_sig.as_ptr(),
+            register_sig_12.as_ptr(),
         );
-        if register_mid.is_null() {
+        let (register_mid, is_12_args) = if !register_mid_12.is_null() {
+            (register_mid_12, true)
+        } else {
             if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
                 ((**env).ExceptionClear)(env);
             }
-            return Err("Failed to find GenericRedoxEntityBlock.registerWithEntity method".into());
-        }
+            let register_sig_9 = CString::new(
+                "(Ljava/lang/String;FFZZIZLjava/lang/String;I)Lnet/redoxmc/bridge/block/GenericRedoxEntityBlock;",
+            )
+            .unwrap();
+            let register_mid_9 = ((**env).GetStaticMethodID)(
+                env,
+                entity_block_class,
+                register_method_name.as_ptr(),
+                register_sig_9.as_ptr(),
+            );
+            if register_mid_9.is_null() {
+                if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {
+                    ((**env).ExceptionClear)(env);
+                }
+                return Err(
+                    "Failed to find GenericRedoxEntityBlock.registerWithEntity method".into(),
+                );
+            }
+            (register_mid_9, false)
+        };
 
         let c_block_id = CString::new(block.id.as_str()).unwrap();
         let j_block_id = ((**env).NewStringUTF)(env, c_block_id.as_ptr());
@@ -108,20 +128,54 @@ unsafe fn register_block_in_game_inner(
         let j_be_id = ((**env).NewStringUTF)(env, c_be_id.as_ptr());
         let j_be_flags = be.behavior_flags as jni::jint;
 
-        let res = ((**env).CallStaticObjectMethod)(
-            env,
-            entity_block_class,
-            register_mid,
-            j_block_id,
-            j_destroy_time as std::os::raw::c_double,
-            j_explosion_resistance as std::os::raw::c_double,
-            j_requires_tool as std::os::raw::c_uint,
-            j_no_collision as std::os::raw::c_uint,
-            j_flags,
-            j_register_item as std::os::raw::c_uint,
-            j_be_id,
-            j_be_flags,
-        );
+        let res = if is_12_args {
+            let j_slot_count = be.slot_count as jni::jint;
+            let j_menu_id = if let Some(m) = &be.menu_id {
+                let c_m = CString::new(m.as_str()).unwrap();
+                ((**env).NewStringUTF)(env, c_m.as_ptr())
+            } else {
+                std::ptr::null_mut()
+            };
+            let j_title = if let Some(t) = &be.container_title {
+                let c_t = CString::new(t.as_str()).unwrap();
+                ((**env).NewStringUTF)(env, c_t.as_ptr())
+            } else {
+                std::ptr::null_mut()
+            };
+
+            ((**env).CallStaticObjectMethod)(
+                env,
+                entity_block_class,
+                register_mid,
+                j_block_id,
+                j_destroy_time as std::os::raw::c_double,
+                j_explosion_resistance as std::os::raw::c_double,
+                j_requires_tool as std::os::raw::c_uint,
+                j_no_collision as std::os::raw::c_uint,
+                j_flags,
+                j_register_item as std::os::raw::c_uint,
+                j_be_id,
+                j_be_flags,
+                j_slot_count,
+                j_menu_id,
+                j_title,
+            )
+        } else {
+            ((**env).CallStaticObjectMethod)(
+                env,
+                entity_block_class,
+                register_mid,
+                j_block_id,
+                j_destroy_time as std::os::raw::c_double,
+                j_explosion_resistance as std::os::raw::c_double,
+                j_requires_tool as std::os::raw::c_uint,
+                j_no_collision as std::os::raw::c_uint,
+                j_flags,
+                j_register_item as std::os::raw::c_uint,
+                j_be_id,
+                j_be_flags,
+            )
+        };
 
         if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE || res.is_null() {
             if ((**env).ExceptionCheck)(env) == jni::JNI_TRUE {

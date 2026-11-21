@@ -139,4 +139,58 @@ public class GenericRedoxMenuHelper {
             System.err.println("[redox-mc-bridge] Error during testMenuSlotClickLifecycle: " + e);
         }
     }
+
+    public static void testStorageBlockContainerLifecycle() {
+        try {
+            System.out.println("[redox-mc-bridge] Starting testStorageBlockContainerLifecycle...");
+            net.minecraft.world.level.block.entity.BlockEntityType<?> beType =
+                    BuiltInRegistries.BLOCK_ENTITY_TYPE.getValue(Identifier.parse("testmod:storage_crate_be"));
+            if (beType == null) {
+                throw new IllegalStateException("testmod:storage_crate_be type not registered in BuiltInRegistries.BLOCK_ENTITY_TYPE");
+            }
+            net.minecraft.world.level.block.Block crateBlock =
+                    BuiltInRegistries.BLOCK.getValue(Identifier.parse("testmod:storage_crate"));
+            net.minecraft.world.level.block.state.BlockState state =
+                    (crateBlock != null) ? crateBlock.defaultBlockState() : net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+            net.redoxmc.bridge.block.GenericRedoxBlockEntity be = new net.redoxmc.bridge.block.GenericRedoxBlockEntity(
+                    beType,
+                    net.minecraft.core.BlockPos.ZERO,
+                    state,
+                    "testmod:storage_crate_be",
+                    net.redoxmc.bridge.block.GenericRedoxBlockEntity.FLAG_HAS_CONTAINER,
+                    9,
+                    "testmod:storage_crate_menu",
+                    "Storage Crate"
+            );
+            SimpleContainer container = be.getContainer();
+            if (container == null) {
+                throw new IllegalStateException("GenericRedoxBlockEntity did not instantiate container");
+            }
+
+            // Put items in container
+            net.minecraft.world.item.Item diamond = BuiltInRegistries.ITEM.getValue(Identifier.parse("minecraft:diamond"));
+            net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(diamond, 16);
+            container.setItem(0, stack);
+            System.out.println("[redox-mc-bridge] Stored 16 diamonds in slot 0 of storage crate");
+
+            // Open menu from the block entity
+            GenericRedoxMenu menu = (GenericRedoxMenu) be.createMenu(200, null, null);
+            if (menu == null) {
+                throw new IllegalStateException("be.createMenu returned null");
+            }
+            if (menu.getContainer().getItem(0).getCount() != 16) {
+                throw new IllegalStateException("Menu container slot 0 does not reflect block entity items");
+            }
+            System.out.println("[redox-mc-bridge] Menu successfully created from block entity with 16 diamonds in slot 0");
+
+            // Exercise slot clicks through the opened menu
+            menu.clicked(0, 0, net.minecraft.world.inventory.ContainerInput.PICKUP, null);
+            menu.removed(null);
+
+            System.out.println("[redox-mc-bridge] testStorageBlockContainerLifecycle completed successfully.");
+        } catch (Exception e) {
+            System.err.println("[redox-mc-bridge] Error in testStorageBlockContainerLifecycle: " + e);
+            e.printStackTrace();
+        }
+    }
 }

@@ -17,6 +17,7 @@ import net.redoxmc.bridge.network.ModNetworkBridge;
  */
 public final class ServerEvents {
     private static volatile MinecraftServer serverInstance;
+    private static volatile boolean storageLifecycleTested = false;
 
     private ServerEvents() {}
 
@@ -39,6 +40,17 @@ public final class ServerEvents {
             serverInstance = server;
         }
         ModNetworkBridge.sweepHandshakeTasks();
+        if (!storageLifecycleTested) {
+            storageLifecycleTested = true;
+            try {
+                if (net.minecraft.core.registries.BuiltInRegistries.BLOCK_ENTITY_TYPE
+                        .containsKey(net.minecraft.resources.Identifier.parse("testmod:storage_crate_be"))) {
+                    net.redoxmc.bridge.gui.GenericRedoxMenuHelper.testStorageBlockContainerLifecycle();
+                }
+            } catch (Throwable t) {
+                System.err.println("[redox-mc-bridge] Error during onServerTick testStorageBlockContainerLifecycle: " + t);
+            }
+        }
         long tickCount = (server != null) ? (long) server.getTickCount() : 0L;
         RedoxBridge.onServerTick(tickCount);
     }

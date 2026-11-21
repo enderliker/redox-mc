@@ -631,12 +631,62 @@ impl ModManager {
                                 };
                                 if be_status.is_success() && has_be {
                                     if let Ok(be_id_str) = unsafe { ffi_be_id.as_str() } {
-                                        block_entity =
-                                            Some(crate::registry::RegisteredBlockEntityEntry {
-                                                id: be_id_str.to_string(),
-                                                valid_blocks: vec![id_str.to_string()],
-                                                behavior_flags: be_flags,
-                                            });
+                                        let mut slot_count = 9u32;
+                                        let mut menu_id = None;
+                                        let mut container_title = None;
+
+                                        type GetContainerInfoFn =
+                                            unsafe extern "C" fn(
+                                                usize,
+                                                *mut bool,
+                                                *mut u32,
+                                                *mut redox_mc_abi::types::FfiStr,
+                                                *mut redox_mc_abi::types::FfiStr,
+                                            )
+                                                -> redox_mc_abi::types::FfiStatus;
+
+                                        if let Ok(get_container_info) = unsafe {
+                                            loaded._library.get::<GetContainerInfoFn>(
+                                                b"redox_mod_get_block_entity_container_info_at\0",
+                                            )
+                                        } {
+                                            let mut has_container = false;
+                                            let mut slots = 9u32;
+                                            let mut ffi_menu_id =
+                                                redox_mc_abi::types::FfiStr::EMPTY;
+                                            let mut ffi_title = redox_mc_abi::types::FfiStr::EMPTY;
+                                            let c_status = unsafe {
+                                                get_container_info(
+                                                    i,
+                                                    &mut has_container,
+                                                    &mut slots,
+                                                    &mut ffi_menu_id,
+                                                    &mut ffi_title,
+                                                )
+                                            };
+                                            if c_status.is_success() && has_container {
+                                                slot_count = slots;
+                                                if let Ok(m) = unsafe { ffi_menu_id.as_str() } {
+                                                    if !m.is_empty() {
+                                                        menu_id = Some(m.to_string());
+                                                    }
+                                                }
+                                                if let Ok(t) = unsafe { ffi_title.as_str() } {
+                                                    if !t.is_empty() {
+                                                        container_title = Some(t.to_string());
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        let be_entry =
+                                            crate::registry::RegisteredBlockEntityEntry::new(
+                                                be_id_str.to_string(),
+                                                vec![id_str.to_string()],
+                                                be_flags,
+                                            )
+                                            .with_container(slot_count, menu_id, container_title);
+                                        block_entity = Some(be_entry);
                                     }
                                 }
                             }

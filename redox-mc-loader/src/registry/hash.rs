@@ -50,6 +50,12 @@ pub struct RegisteredBlockEntityEntry {
     pub valid_blocks: Vec<String>,
     /// Bitmask of active behavior callbacks.
     pub behavior_flags: u32,
+    /// Number of container slots (if container).
+    pub slot_count: u32,
+    /// Menu identifier (if container).
+    pub menu_id: Option<String>,
+    /// Custom container display title (if container).
+    pub container_title: Option<String>,
 }
 
 impl RegisteredBlockEntityEntry {
@@ -59,7 +65,23 @@ impl RegisteredBlockEntityEntry {
             id: id.into(),
             valid_blocks,
             behavior_flags,
+            slot_count: 9,
+            menu_id: None,
+            container_title: None,
         }
+    }
+
+    /// Sets container properties.
+    pub fn with_container(
+        mut self,
+        slots: u32,
+        menu_id: Option<String>,
+        title: Option<String>,
+    ) -> Self {
+        self.slot_count = slots;
+        self.menu_id = menu_id;
+        self.container_title = title;
+        self
     }
 }
 
@@ -175,6 +197,16 @@ impl RegistryHasher {
         }
         // 3. Active behavior flags
         self.hasher.update(be.behavior_flags.to_le_bytes());
+        // 4. Container slot count and menu ID (if container)
+        if (be.behavior_flags & redox_mc_abi::types::BLOCK_ENTITY_FLAG_HAS_CONTAINER) != 0 {
+            self.hasher.update(be.slot_count.to_le_bytes());
+            if let Some(menu) = &be.menu_id {
+                self.hasher.update((menu.len() as u32).to_le_bytes());
+                self.hasher.update(menu.as_bytes());
+            } else {
+                self.hasher.update(0u32.to_le_bytes());
+            }
+        }
     }
 
     /// Feeds a menu's identity and properties into the hash digest.
@@ -242,11 +274,11 @@ impl RegistryHashBuilder {
         valid_blocks: &[&str],
         behavior_flags: u32,
     ) -> &mut Self {
-        self.block_entities.push(RegisteredBlockEntityEntry {
-            id: id.into(),
-            valid_blocks: valid_blocks.iter().map(|s| s.to_string()).collect(),
+        self.block_entities.push(RegisteredBlockEntityEntry::new(
+            id,
+            valid_blocks.iter().map(|s| s.to_string()).collect(),
             behavior_flags,
-        });
+        ));
         self
     }
 

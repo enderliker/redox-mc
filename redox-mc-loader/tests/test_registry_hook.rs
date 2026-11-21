@@ -204,7 +204,7 @@ fn test_mod_manager_dispatches_register_content_to_loaded_mods() {
     assert_eq!(items[0].id, "testmod:ruby");
 
     let blocks = manager.collect_registered_blocks();
-    assert_eq!(blocks.len(), 2);
+    assert_eq!(blocks.len(), 3);
     assert_eq!(blocks[0].id, "testmod:ruby_block");
     assert_eq!(blocks[0].destroy_time, 3.0);
     assert_eq!(blocks[0].explosion_resistance, 6.0);
@@ -219,9 +219,23 @@ fn test_mod_manager_dispatches_register_content_to_loaded_mods() {
         "testmod:counter_be"
     );
 
+    assert_eq!(blocks[2].id, "testmod:storage_crate");
+    assert_eq!(blocks[2].destroy_time, 2.0);
+    assert!(blocks[2].block_entity.is_some());
+    let crate_be = blocks[2].block_entity.as_ref().unwrap();
+    assert_eq!(crate_be.id, "testmod:storage_crate_be");
+    assert_eq!(crate_be.slot_count, 9);
+    assert_eq!(crate_be.menu_id, Some("testmod:storage_crate_menu".into()));
+
     let block_entities = manager.collect_registered_block_entities();
-    assert_eq!(block_entities.len(), 1);
+    assert_eq!(block_entities.len(), 2);
     assert_eq!(block_entities[0].id, "testmod:counter_be");
+    assert_eq!(block_entities[1].id, "testmod:storage_crate_be");
+
+    let menus = manager.collect_registered_menus();
+    assert_eq!(menus.len(), 2);
+    assert_eq!(menus[0].id, "testmod:counter_menu");
+    assert_eq!(menus[1].id, "testmod:storage_crate_menu");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

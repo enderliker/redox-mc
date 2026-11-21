@@ -3,6 +3,7 @@
 use std::sync::Mutex;
 
 pub use redox_mc_abi::types::{
+    BLOCK_ENTITY_FLAG_HAS_CONTAINER as FLAG_HAS_CONTAINER,
     BLOCK_ENTITY_FLAG_HAS_PERSISTENCE as FLAG_HAS_PERSISTENCE,
     BLOCK_ENTITY_FLAG_HAS_TICK as FLAG_HAS_TICK,
 };
@@ -16,6 +17,14 @@ pub struct BlockEntityDefinition {
     pub has_tick: bool,
     /// Whether the block entity serializes persistent state.
     pub has_persistence: bool,
+    /// Whether the block entity holds a persistent item container.
+    pub has_container: bool,
+    /// Number of container slots (default 9).
+    pub slot_count: u32,
+    /// Menu identifier used to open container (defaults to `id`).
+    pub menu_id: Option<String>,
+    /// Optional custom title displayed on the container GUI.
+    pub title: Option<String>,
 }
 
 impl BlockEntityDefinition {
@@ -25,6 +34,10 @@ impl BlockEntityDefinition {
             id: id.into(),
             has_tick: false,
             has_persistence: false,
+            has_container: false,
+            slot_count: 9,
+            menu_id: None,
+            title: None,
         }
     }
 
@@ -40,6 +53,26 @@ impl BlockEntityDefinition {
         self
     }
 
+    /// Sets whether this block entity has a container.
+    pub fn has_container(mut self, val: bool) -> Self {
+        self.has_container = val;
+        self
+    }
+
+    /// Configures container slots and associated menu identifier.
+    pub fn with_container(mut self, slots: u32, menu_id: impl Into<String>) -> Self {
+        self.has_container = true;
+        self.slot_count = slots;
+        self.menu_id = Some(menu_id.into());
+        self
+    }
+
+    /// Sets a custom GUI display title.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
     /// Returns the behavior flags bitmask.
     pub fn behavior_flags(&self) -> u32 {
         let mut flags = 0;
@@ -48,6 +81,9 @@ impl BlockEntityDefinition {
         }
         if self.has_persistence {
             flags |= FLAG_HAS_PERSISTENCE;
+        }
+        if self.has_container {
+            flags |= FLAG_HAS_CONTAINER;
         }
         flags
     }

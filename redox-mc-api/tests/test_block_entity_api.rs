@@ -1,19 +1,22 @@
 use redox_mc_abi::types::{FfiBuffer, FfiStatus, FfiStr};
 use redox_mc_api::block::{
     clear_registered_blocks, get_registered_blocks, redox_mod_free_buffer,
-    redox_mod_get_block_entity_info_at, redox_mod_on_block_entity_load,
-    redox_mod_on_block_entity_save, redox_mod_on_block_entity_tick, register_block,
-    BlockDefinition,
+    redox_mod_get_block_entity_container_info_at, redox_mod_get_block_entity_info_at,
+    redox_mod_on_block_entity_load, redox_mod_on_block_entity_save, redox_mod_on_block_entity_tick,
+    register_block, BlockDefinition,
 };
 use redox_mc_api::block_entity::{
     clear_handlers, dispatch_load, dispatch_save, dispatch_tick, on_load, on_save, on_tick,
-    BlockEntityDefinition, FLAG_HAS_PERSISTENCE, FLAG_HAS_TICK,
+    BlockEntityDefinition, FLAG_HAS_CONTAINER, FLAG_HAS_PERSISTENCE, FLAG_HAS_TICK,
 };
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Mutex;
 
+static TEST_LOCK: Mutex<()> = Mutex::new(());
+
 #[test]
 fn test_block_entity_declarative_builder() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let be_default = BlockEntityDefinition::new("testmod:default_be");
     assert_eq!(be_default.id, "testmod:default_be");
     assert!(!be_default.has_tick);
@@ -44,6 +47,7 @@ fn test_block_entity_declarative_builder() {
 
 #[test]
 fn test_block_entity_handlers_and_flags() {
+    let _guard = TEST_LOCK.lock().unwrap();
     clear_handlers();
 
     let def = BlockEntityDefinition::new("testmod:demo")
@@ -88,6 +92,7 @@ fn test_block_entity_handlers_and_flags() {
 
 #[test]
 fn test_c_abi_block_entity_exported_symbols() {
+    let _guard = TEST_LOCK.lock().unwrap();
     clear_handlers();
     clear_registered_blocks();
 
@@ -238,5 +243,72 @@ fn test_c_abi_block_entity_exported_symbols() {
         };
         let status = redox_mod_on_block_entity_load(valid_id, 0, 0, 0, invalid_data);
         assert_eq!(status, FfiStatus::InvalidArgument);
+    }
+}
+
+#[test]
+fn test_block_entity_container_definition_and_c_abi() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    clear_handlers();
+    clear_registered_blocks();
+
+    // 1. Declarative builder verification
+    let be = BlockEntityDefinition::new("testmod:storage_be")
+        .with_container(9, "testmod:storage_menu")
+        .title("Storage Crate");
+
+    assert!(be.has_container);
+    assert_eq!(be.slot_count, 9);
+    assert_eq!(be.menu_id, Some("testmod:storage_menu".to_string()));
+    assert_eq!(be.title, Some("Storage Crate".to_string()));
+    assert_eq!(be.behavior_flags(), FLAG_HAS_CONTAINER);
+
+    let block = BlockDefinition::new("testmod:storage_crate").with_container_block_entity(
+        "testmod:storage_be",
+        9,
+        "testmod:storage_menu",
+    );
+    register_block(block);
+    assert_eq!(get_registered_blocks().len(), 1);
+
+    // 2. C-ABI exported query verification
+    unsafe {
+        let mut out_has_container = false;
+        let mut out_slots = 0u32;
+        let mut out_menu_id = FfiStr::EMPTY;
+        let mut out_title = FfiStr::EMPTY;
+
+        // Null pointer check
+        let status = redox_mod_get_block_entity_container_info_at(
+            0,
+            std::ptr::null_mut(),
+            &mut out_slots,
+            &mut out_menu_id,
+            &mut out_title,
+        );
+        assert_eq!(status, FfiStatus::NullPointer);
+
+        // Out of bounds check
+        let status = redox_mod_get_block_entity_container_info_at(
+            99,
+            &mut out_has_container,
+            &mut out_slots,
+            &mut out_menu_id,
+            &mut out_title,
+        );
+        assert_eq!(status, FfiStatus::NotFound);
+
+        // Valid query at index 0
+        let status = redox_mod_get_block_entity_container_info_at(
+            0,
+            &mut out_has_container,
+            &mut out_slots,
+            &mut out_menu_id,
+            &mut out_title,
+        );
+        assert_eq!(status, FfiStatus::Success);
+        assert!(out_has_container);
+        assert_eq!(out_slots, 9);
+        assert_eq!(out_menu_id.as_str().unwrap(), "testmod:storage_menu");
     }
 }
